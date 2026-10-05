@@ -1,100 +1,90 @@
 # jvmumps critical path
 
+**Last updated:** 2026-10-05  
+**Charter:** JvMumps and mJVM are **complete M implementations** with **RSM-equivalent scope** (RSM as *model*, not a line-by-line port).  
 **Parts:** JvMumps (1) → mJVM (2).  
-**Siblings:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps/C3Mumps), `fst/docs/CRITICAL_PATH.md` (F/R overview).
+**Siblings:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps/C3Mumps — same charter), `fst/docs/CRITICAL_PATH.md` (F/R overview).
 
 ## Dependency graph
 
 ```
-  RSM ad679d0 (oracle)
+  RSM ad679d0 (oracle / model)
         │
         ├──────────────────────────────┐
         ▼                              ▼
   ┌─────────────┐               ┌─────────────┐
-  │ PyMumps     │               │ C3Mumps     │   (parallel, Track R)
-  │ completion  │               │ completion  │
+  │ PyMumps     │               │ C3Mumps     │   (parallel, full M)
+  │ full M      │               │ full M      │
   └─────────────┘               └─────────────┘
         │
-        │  corpus (shared, not source)
+        │  shared corpus (not source)
         ▼
   ┌─────────────┐
-  │ J0–J6       │  JvMumps — semantic port to Java
+  │ J0–J11      │  JvMumps — full M in Java
   │ JvMumps     │
   └──────┬──────┘
-         │  frontend + semantics freeze
+         │  frontend + contract
          ▼
   ┌─────────────┐
-  │ M0–M9       │  mJVM — JVM-native compiler + runtime
+  │ M0–M9       │  mJVM — JVM-native full M
   │ mJVM        │
   └─────────────┘
 ```
 
-JvMumps **may start immediately** (J0–J5) in parallel with PyMumps/C3Mumps waves.  
+JvMumps may run **in parallel** with PyMumps/C3Mumps waves.  
 mJVM **M1+** waits on JvMumps J1–J2 (values + commands) so the frontend is not written twice.
 
 ---
 
-## Part 1 — JvMumps (Java port)
+## Part 1 — JvMumps (full M in Java)
 
-| ID | Task | Output | Gate |
-|----|------|--------|------|
-| **J0** | Scaffold | `jvmumps/jvmumps/` Gradle, JUnit, corpus copy, `RunConformance.java` | empty runner green |
-| **J1** | Values + expr | `MStr`, `toNum`, left-to-right `eval` | C01–C25 |
-| **J2** | Core commands | SET IF FOR WRITE KILL NEW MERGE QUIT | C01–C20, C56–C60 |
-| **J3** | Patterns + ISO | `pattern.java`, T11–T15 + 8 divergences | T11–T15, C26–C29 |
-| **J4** | Intrinsics | FUN* table + `$HOROLOG` `$SELECT` `$X` `$Y` | C30–C50 |
-| **J5** | Indirection + stack | `@` `@@` `K @ref` `$QUERY` `$STACK` `$TEXT` | C51–C76 |
-| **J6** | Parity | full corpus vs live RSM | **79/8/0/0** (or current peer baseline) |
-| **J7** | Docs | README scope + semantics notes | review |
+| ID | Task | Gate |
+|----|------|------|
+| **J0** | Scaffold (build, JUnit, shared corpus, runner) | runner green |
+| **J1** | Values + left-to-right expr | C01–C25 |
+| **J2** | Core commands SET/IF/FOR/WRITE/KILL/NEW/MERGE/QUIT | corpus |
+| **J3** | Patterns + ISO divergences | T11–T15 |
+| **J4** | Intrinsics `FUN*` + `$HOROLOG`/`$SELECT`/`$X`/`$Y` | B1–B6 |
+| **J5** | `@`/`@@`/`K @ref` + `$QUERY`/`$STACK`/`$TEXT` | C51–C76 |
+| **J6** | Routine calls + `LOCK` | W4-equivalent |
+| **J7** | Store + **persistence** | W5-equivalent |
+| **J8** | Devices `READ`/`OPEN`/`USE`/`CLOSE` | W6-equivalent |
+| **J9** | `JOB`, transactions, `$ETRAP`/`$ECODE`, `VIEW` | W7-equivalent |
+| **J10** | Full specials + WRITE device params | W8-equivalent |
+| **J11** | **Full-M acceptance** vs RSM | corpus + FileMan + CLI |
 
-**J6 exit:** JvMumps joins the peer-port club — same corpus, same intentional divergences, RSM still oracle.
-
----
-
-## Part 2 — mJVM (JVM-native M)
-
-| ID | Task | Output | Gate |
-|----|------|--------|------|
-| **M0** | Scaffold | `mJVM/{compiler,runtime,cli}` modules | builds |
-| **M1** | M IR + interp | reuse JvMumps frontend; IR interpreter | J6 corpus on IR |
-| **M2** | Bytecode emitter | SET/WRITE/arith → `.class` | JVM smoke |
-| **M3** | Control / calls | `DO` `$$` `GOTO` via `invokedynamic` | call corpus |
-| **M4** | Globals | store API matching `$DATA`/`$ORDER`/`$QUERY` | store oracle |
-| **M5** | Devices subset | file OPEN/USE/CLOSE/READ/WRITE | FileMan text I/O |
-| **M6** | CLI drop-in | `mjvm` ≈ `rsm` interface | smoke scripts |
-| **M7** | FileMan Tier A | `FILEMAN_CORPUS` without ENGINE GAP | gate report |
-| **M8** | Performance | JIT-friendly; no blanket `eval` | bench note |
-| **M9** | Publish | language ref + interop + migration | docs |
-
-### Drop-in definition (M6/M7)
-
-`mjvm` is a drop-in replacement when:
-
-1. Environment shape matches (`ydb`-style or RSM `init` — decide in M6 spike).
-2. `mjvm <db> < script.m` runs the shared corpus with identical stdout/stderr on non-divergent cases.
-3. FileMan Tier A runs with **no new ENGINE GAP** lines vs RSM.
-4. Documented divergences = the eight ISO fixes + any JVM-specific notes (encoding, JOB).
+**J11 exit:** JvMumps meets the RSM observable contract (language + subsystems), same eight ISO divergences as peer ports.
 
 ---
 
-## Parallel tracks
+## Part 2 — mJVM (JVM-native full M)
 
-| Clock | PyMumps/C3Mumps | JvMumps | mJVM |
-|-------|-----------------|---------|------|
-| Week 1 | Wave 1 (`$HOROLOG`, `HANG`, …) | J0–J1 | — |
-| Week 2 | Wave 2 (`$SELECT`, …) | J2–J3 | M0 |
-| Week 3 | Wave 3 (`DO`/`GOTO`/`XECUTE`) | J4–J5 | M1 |
-| Week 4 | Branch C freeze **or** S start | J6–J7 | M2–M3 |
-| Later | Branch S system work | maintenance | M4–M9 |
+| ID | Task | Gate |
+|----|------|------|
+| **M0** | `compiler/` `runtime/` `cli/` modules | builds |
+| **M1** | Frontend → M IR (shared contract with JvMumps) | J1–J5 corpus |
+| **M2** | Emit `.class` for straight-line code | bytecode smoke |
+| **M3** | `DO`/`$$`/`GOTO` via `invokedynamic` | routine corpus |
+| **M4** | Persistent globals | store oracle vs RSM |
+| **M5** | Devices | FileMan I/O |
+| **M6** | `JOB`, locks, transactions, errors | process + error model |
+| **M7** | CLI `mjvm` drop-in (`rsm`-shaped) | RSM smoke + FileMan Tier A |
+| **M8** | Performance (JIT-friendly) | bench |
+| **M9** | Docs + migration | published |
+
+**M7 exit:** `mjvm` is a drop-in for RSM on the language + subsystem contract.
 
 ---
 
-## RSM outstanding inventory (drive both completions)
+## Parallel tracks (indicative)
 
-Canonical list: **`fst/docs/RSM-PORT-COMPLETION.md`** §§ A–D.  
-Summary: commands A7–A16 · intrinsics B2–B10 · semantics C1–C7 · subsystems D1–D5.
-
-Cheap first (all stacks): **`$HOROLOG` · `HANG` · `BREAK` · bare `$Q` · `$SELECT`**.
+| | PyMumps/C3Mumps | JvMumps | mJVM |
+|---|-----------------|---------|------|
+| Phase A | W4 routines/LOCK | J0–J5 language core | — |
+| Phase B | W5 store | J6–J7 store/LOCK | M0–M1 |
+| Phase C | W6 devices | J8 devices | M2–M4 |
+| Phase D | W7–W9 full M | J9–J11 full M | M5–M7 drop-in |
+| Phase E | — | — | M8–M9 polish |
 
 ---
 
@@ -102,10 +92,13 @@ Cheap first (all stacks): **`$HOROLOG` · `HANG` · `BREAK` · bare `$Q` · `$SE
 
 | Work | Repo |
 |------|------|
-| PyMumps waves | `mjandrews1/pymumps` |
-| C3Mumps waves | `mjandrews1/c3mumps` |
-| JvMumps J0–J7 | `mjandrews1/jvmumps` (or `mjandrews1/jvmumps` mono with `mJVM/`) |
+| PyMumps / C3Mumps waves | `mjandrews1/pymumps`, `mjandrews1/c3mumps` |
+| JvMumps J0–J11 | `mjandrews1/jvmumps` |
 | mJVM M0–M9 | same |
-| Cross-cutting semantics | `mjandrews1/m-semantics` (Dafny) |
+| Cross-cutting semantics | `mjandrews1/m-semantics` |
 
-Do not reopen `rsm#20` for expansion. File new issues with wave IDs (`J1`, `M4`, `W1.1`, …).
+File issues with wave IDs (`W5`, `J7`, `M3`, …). Do not reopen `rsm#20`.
+
+
+**Parts:** JvMumps (1) → mJVM (2).  
+**Siblings:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps/C3Mumps), `fst/docs/CRITICAL_PATH.md` (F/R overview).
