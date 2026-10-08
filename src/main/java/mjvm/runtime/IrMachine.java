@@ -50,6 +50,36 @@ public final class IrMachine {
                     if (!MRuntime.truthy(v)) pc = op.iarg;
                 }
                 case Ir.CALL -> rt.call(op.name, op.iarg);
+                case Ir.OPEN -> {
+                    // stack: path, device#  (device# pushed first)
+                    MValue path = vals[--sp];
+                    MValue num = vals[--sp];
+                    rt.openDevice((int) num.asNum(), path.asStr());
+                }
+                case Ir.CLOSE -> {
+                    MValue num = vals[--sp];
+                    rt.closeDevice((int) num.asNum());
+                }
+                case Ir.USE -> {
+                    MValue num = vals[--sp];
+                    rt.useDevice((int) num.asNum());
+                }
+                case Ir.READ -> {
+                    rt.setVar(op.name == null ? "R" : op.name,
+                            MValue.ofString(rt.readDevice()));
+                }
+                case Ir.JOB -> {
+                    MValue code = vals[--sp];
+                    rt.job(code.asStr());
+                }
+                case Ir.LOCK -> {
+                    MValue key = vals[--sp];
+                    if (op.iarg > 0) rt.lockAcquire(key.asStr(), 50);
+                    else rt.lockRelease(key.asStr());
+                }
+                case Ir.TSTART -> rt.tstart();
+                case Ir.TCOMMIT -> rt.tcommit();
+                case Ir.TROLLBACK -> rt.trollback();
                 case Ir.RET -> {
                     return;
                 }

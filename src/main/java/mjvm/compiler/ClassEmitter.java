@@ -131,6 +131,19 @@ public final class ClassEmitter {
                 case Ir.JMP -> b.append("    goto L").append(op.iarg).append(";\n");
                 case Ir.JMP0 -> b.append("    if (!mjvm.runtime.MRuntime.truthy(s[--p])) goto L").append(op.iarg).append(";\n");
                 case Ir.CALL -> b.append("    mjvm_call(").append(jstr(op.name)).append(", ").append(op.iarg).append(");\n");
+                case Ir.OPEN -> b.append("    { jvmumps.MValue path = s[--p]; jvmumps.MValue num = s[--p]; rt.openDevice((int)num.asNum(), path.asStr()); }\n");
+                case Ir.CLOSE -> b.append("    rt.closeDevice((int)s[--p].asNum());\n");
+                case Ir.USE -> b.append("    rt.useDevice((int)s[--p].asNum());\n");
+                case Ir.READ -> b.append("    rt.setVar(").append(jstr(op.name == null ? "R" : op.name))
+                        .append(", jvmumps.MValue.ofString(rt.readDevice()));\n");
+                case Ir.JOB -> b.append("    rt.job(s[--p].asStr());\n");
+                case Ir.LOCK -> {
+                    if (op.iarg > 0) b.append("    rt.lockAcquire(s[--p].asStr(), 50);\n");
+                    else b.append("    rt.lockRelease(s[--p].asStr());\n");
+                }
+                case Ir.TSTART -> b.append("    rt.tstart();\n");
+                case Ir.TCOMMIT -> b.append("    rt.tcommit();\n");
+                case Ir.TROLLBACK -> b.append("    rt.trollback();\n");
                 case Ir.RET -> b.append("    return;\n");
                 default -> b.append("    throw new jvmumps.MError(\"bad op\");\n");
             }

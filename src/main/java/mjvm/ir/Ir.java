@@ -24,6 +24,17 @@ public final class Ir {
     public static final int JMP0 = 31;      // pop, jump if falsey
     public static final int CALL = 40;      // CALL name argc (M3 invokedynamic)
     public static final int RET = 50;
+    // M5 devices
+    public static final int OPEN = 60;
+    public static final int CLOSE = 61;
+    public static final int USE = 62;
+    public static final int READ = 63;
+    // M6 JOB / locks / TX
+    public static final int JOB = 70;
+    public static final int LOCK = 71;
+    public static final int TSTART = 72;
+    public static final int TCOMMIT = 73;
+    public static final int TROLLBACK = 74;
 
     public final int op;
     public final String name;   // var / label / write-tag
@@ -77,6 +88,42 @@ public final class Ir {
 
     public static Ir call(String fn, int argc) {
         return new Ir(CALL, fn, null, 0, argc);
+    }
+
+    public static Ir open() {
+        return new Ir(OPEN, null, null, 0, 0);
+    }
+
+    public static Ir close() {
+        return new Ir(CLOSE, null, null, 0, 0);
+    }
+
+    public static Ir use() {
+        return new Ir(USE, null, null, 0, 0);
+    }
+
+    public static Ir read() {
+        return new Ir(READ, null, null, 0, 0);
+    }
+
+    public static Ir job() {
+        return new Ir(JOB, null, null, 0, 0);
+    }
+
+    public static Ir lock(int acquire) {
+        return new Ir(LOCK, null, null, 0, acquire);
+    }
+
+    public static Ir tstart() {
+        return new Ir(TSTART, null, null, 0, 0);
+    }
+
+    public static Ir tcommit() {
+        return new Ir(TCOMMIT, null, null, 0, 0);
+    }
+
+    public static Ir trollback() {
+        return new Ir(TROLLBACK, null, null, 0, 0);
     }
 
     public static Ir ret() {

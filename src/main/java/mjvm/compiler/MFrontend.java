@@ -49,10 +49,63 @@ public final class MFrontend {
                     List<Ir> tmp = new ArrayList<>();
                     i = compileExpr(line, i, tmp, " ");
                     out.addAll(tmp);
-                    out.add(Ir.call(cmd, 1));
+                    if (cmd.equals("J") || cmd.equals("JOB")) {
+                        out.add(Ir.job());
+                    } else {
+                        out.add(Ir.call(cmd, 1));
+                    }
                 } else {
                     out.add(Ir.call(target, 0));
                 }
+            } else if (cmd.equals("TSTART")) {
+                out.add(Ir.tstart());
+            } else if (cmd.equals("TCOMMIT")) {
+                out.add(Ir.tcommit());
+            } else if (cmd.equals("TROLLBACK")) {
+                out.add(Ir.trollback());
+            } else if (cmd.equals("O") || cmd.equals("OPEN")
+                    || cmd.equals("C") || cmd.equals("CLOSE")
+                    || cmd.equals("U") || cmd.equals("USE")) {
+                // OPEN n:path  /  CLOSE n  /  USE n  — two stack operands
+                List<Ir> tmp = new ArrayList<>();
+                i = compileExpr(line, i, tmp, ":, ");
+                if (i < line.length() && line.charAt(i) == ':') {
+                    i++;
+                    List<Ir> tmp2 = new ArrayList<>();
+                    i = compileExpr(line, i, tmp2, " ");
+                    out.addAll(tmp);
+                    out.addAll(tmp2);
+                    out.add(Ir.open());
+                } else {
+                    out.addAll(tmp);
+                    if (cmd.startsWith("O") || cmd.equals("OPEN")) out.add(Ir.open());
+                    else if (cmd.startsWith("C") || cmd.equals("CLOSE")) out.add(Ir.close());
+                    else out.add(Ir.use());
+                }
+            } else if (cmd.equals("R") || cmd.equals("READ")) {
+                i = skipWs(line, i);
+                int st2 = i;
+                while (i < line.length() && Character.isLetter(line.charAt(i))) i++;
+                String vn = line.substring(st2, i);
+                if (vn.isEmpty()) vn = "R";
+                out.add(new Ir(Ir.READ, vn, null, 0, 0));
+            } else if (cmd.equals("L") || cmd.equals("LOCK")) {
+                i = skipWs(line, i);
+                int sign = 1;
+                if (i < line.length() && (line.charAt(i) == '+' || line.charAt(i) == '-')) {
+                    sign = line.charAt(i) == '+' ? 1 : -1;
+                    i++;
+                }
+                // lock name is a ref string, not a load of an undefined local
+                int st3 = i;
+                while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
+                        || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
+                String key = line.substring(st3, i);
+                if (key.isEmpty()) {
+                    throw new MError("LOCK requires a name");
+                }
+                out.add(Ir.pushStr(key));
+                out.add(Ir.lock(sign));
             } else {
                 throw new MError("mJVM M2: command not in compiled subset: " + cmd);
             }
@@ -195,8 +248,17 @@ public final class MFrontend {
         int j = i;
         while (j < s.length() && Character.isLetter(s.charAt(j))) j++;
         String w = s.substring(i, j).toUpperCase();
+        // must be a command word followed by space/end (not a variable named X, L, …)
+        if (j < s.length() && s.charAt(j) != ' ' && s.charAt(j) != ':') {
+            return false;
+        }
         return w.equals("S") || w.equals("SET") || w.equals("W") || w.equals("WRITE")
                 || w.equals("Q") || w.equals("QUIT") || w.equals("H") || w.equals("HALT")
-                || w.equals("J") || w.equals("JOB") || w.equals("D") || w.equals("DO");
+                || w.equals("J") || w.equals("JOB") || w.equals("D") || w.equals("DO")
+                || w.equals("L") || w.equals("LOCK") || w.equals("O") || w.equals("OPEN")
+                || w.equals("C") || w.equals("CLOSE") || w.equals("U") || w.equals("USE")
+                || w.equals("R") || w.equals("READ") || w.equals("G") || w.equals("GOTO")
+                || w.equals("TSTART") || w.equals("TCOMMIT") || w.equals("TROLLBACK")
+                || w.equals("X") || w.equals("XECUTE");
     }
 }
