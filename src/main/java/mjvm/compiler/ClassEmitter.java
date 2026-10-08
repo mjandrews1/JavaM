@@ -130,12 +130,22 @@ public final class ClassEmitter {
                 case Ir.WRITE_NL -> b.append("    rt.writeNl();\n");
                 case Ir.JMP -> b.append("    goto L").append(op.iarg).append(";\n");
                 case Ir.JMP0 -> b.append("    if (!mjvm.runtime.MRuntime.truthy(s[--p])) goto L").append(op.iarg).append(";\n");
-                case Ir.CALL -> b.append("    rt.call(").append(jstr(op.name)).append(", ").append(op.iarg).append(");\n");
+                case Ir.CALL -> b.append("    mjvm_call(").append(jstr(op.name)).append(", ").append(op.iarg).append(");\n");
                 case Ir.RET -> b.append("    return;\n");
                 default -> b.append("    throw new jvmumps.MError(\"bad op\");\n");
             }
         }
-        b.append("  }\n}\n");
+        b.append("  }\n");
+        // M3: invokedynamic (LambdaMetafactory) call sites for DO/$$/GOTO
+        b.append("  private void mjvm_call(String name, int argc) {\n");
+        b.append("    mjvm.runtime.IndyLink indy = (r, n, a) -> r.call(n, a);\n");
+        b.append("    indy.invoke(rt, name, argc);\n");
+        b.append("  }\n");
+        b.append("  private void mjvm_goto(String name, int argc) {\n");
+        b.append("    mjvm.runtime.IndyLink indy = (r, n, a) -> r.call(n, a);\n");
+        b.append("    indy.invoke(rt, name, argc);\n");
+        b.append("  }\n");
+        b.append("}\n");
         return b.toString();
     }
 

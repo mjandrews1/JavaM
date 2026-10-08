@@ -124,11 +124,18 @@ public final class MStore implements StoreApi {
         String best = null;
         for (Map.Entry<String, Node> e : parent.kids.entrySet()) {
             String k = e.getKey();
+            // $ORDER(A("")) / $ORDER(A(""),-1) — empty cursor starts the walk
+            if (cur.isEmpty()) {
+                if (best == null || (dir > 0 ? collate(k, best) < 0 : collate(k, best) > 0)) {
+                    best = k;
+                }
+                continue;
+            }
             int c = collate(k, cur);
             if (dir > 0 && c <= 0) {
                 continue;
             }
-            if (dir <= 0 && !cur.isEmpty() && c >= 0) {
+            if (dir <= 0 && c >= 0) {
                 continue;
             }
             if (best == null || (dir > 0 ? collate(k, best) < 0 : collate(k, best) > 0)) {

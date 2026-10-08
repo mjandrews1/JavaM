@@ -38,12 +38,21 @@ public final class MFrontend {
                 break;
             } else if (cmd.equals("J") || cmd.equals("JOB") || cmd.equals("D") || cmd.equals("DO")
                     || cmd.equals("G") || cmd.equals("GOTO") || cmd.equals("X") || cmd.equals("XECUTE")) {
-                // M3: parse a string/expr target and emit CALL
+                // M3: DO/GOTO tag [^rtn] [ (args) ] — name is a call-site, not a load
                 i = skipWs(line, i);
-                List<Ir> tmp = new ArrayList<>();
-                i = compileExpr(line, i, tmp, " ");
-                out.addAll(tmp);
-                out.add(Ir.call(cmd, 1));
+                int tst = i;
+                while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
+                        || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
+                String target = line.substring(tst, i);
+                if (target.isEmpty()) {
+                    // expression form (string / $$fn) — evaluate one arg
+                    List<Ir> tmp = new ArrayList<>();
+                    i = compileExpr(line, i, tmp, " ");
+                    out.addAll(tmp);
+                    out.add(Ir.call(cmd, 1));
+                } else {
+                    out.add(Ir.call(target, 0));
+                }
             } else {
                 throw new MError("mJVM M2: command not in compiled subset: " + cmd);
             }
