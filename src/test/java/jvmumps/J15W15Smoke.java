@@ -7,9 +7,9 @@ public class J15W15Smoke {
     LineInterp m = new LineInterp(st);
     // J15: nested lock + JOB + rollback interplay
     String out = m.run("L +A TSTART S X=1 TROLLBACK L -A W \"ok\",!");
-    if (!out.contains("ok")) throw new IllegalStateException("j15 "+out);
+    if (!"ok\n".equals(out)) throw new IllegalStateException("j15 "+out);
     out = m.run("L +A L +A L -A W \"re\",!");
-    if (!out.contains("re")) throw new IllegalStateException("relock");
+    if (!"re\n".equals(out)) throw new IllegalStateException("relock "+out);
     // W15: long pattern + literals
     check(m, "W (\"a\"?1\"a\"),!", "1\n");
     check(m, "W (\"ab\"?1\"a\"1\"b\"),!", "1\n");

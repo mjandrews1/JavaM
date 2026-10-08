@@ -26,7 +26,7 @@ public final class J7PersistSmoke {
         java.util.List<String[]> rows = st2.dump();
         boolean saw = false;
         for (String[] r : rows) {
-            if (r[0].equals("^G") && r[1].contains("2") && r[1].contains("1") && r[2].equals("c")) {
+            if (r[0].equals("^G") && r[1].equals("[\"2\",\"1\"]") && r[2].equals("c")) {
                 saw = true;
             }
         }

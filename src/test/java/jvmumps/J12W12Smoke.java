@@ -8,7 +8,7 @@ public class J12W12Smoke {
     // J12: parent lock, JOB child that would take same lock (must not steal)
     if (!st.lockAcquire("^J12", "parent", 50)) throw new IllegalStateException("parent lock");
     String out = m.run("J \"S ^C=1\" W \"spawned\",!");
-    if (!out.contains("spawned")) throw new IllegalStateException(out);
+    if (!"spawned\n".equals(out)) throw new IllegalStateException(out);
     if (st.lockAcquire("^J12", "child", 20)) throw new IllegalStateException("child stole lock");
     st.lockRelease("^J12", "parent");
     if (!st.lockAcquire("^J12", "child", 40)) throw new IllegalStateException("child after release");

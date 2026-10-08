@@ -679,7 +679,8 @@ public final class ExprEval {
             String up = name.toUpperCase();
             if (up.equals("$G") || up.equals("$GET") || up.equals("$D") || up.equals("$DATA")
                     || up.equals("$NA") || up.equals("$NAME") || up.equals("$I")
-                    || up.equals("$INCREMENT") || up.equals("$O") || up.equals("$ORDER")) {
+                    || up.equals("$INCREMENT") || up.equals("$O") || up.equals("$ORDER")
+                    || up.equals("$Q") || up.equals("$QUERY")) {
                 if (peek().kind == Kind.LP) {
                     i++;
                     String key = readRefKey();
@@ -1082,7 +1083,13 @@ public final class ExprEval {
                 case "$Q":
                 case "$QUERY":
                     {
-                        String key = lastRef != null ? lastRef : (args.isEmpty() ? "" : args.get(0).asStr());
+                        // $Q(ref) / $Q("") — argument is a closed ref or empty start
+                        String key = "";
+                        if (!args.isEmpty()) {
+                            key = args.get(0).asStr();
+                        } else if (lastRef != null) {
+                            key = lastRef;
+                        }
                         int dir = args.size() > 1 ? (int) args.get(1).asNum() : 1;
                         return MValue.ofString(env.query(key, dir));
                     }

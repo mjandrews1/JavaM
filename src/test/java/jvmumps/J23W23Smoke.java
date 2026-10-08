@@ -6,7 +6,7 @@ public class J23W23Smoke {
     SqlStore st = new SqlStore(db.getAbsolutePath());
     LineInterp m = new LineInterp(st);
     String out = m.run("L +P J \"W 1\" TSTART S E=1 TCOMMIT L -P W \"j23\",!");
-    if (!out.contains("j23")) throw new IllegalStateException("j23 "+out);
+    if (!"j23\n".equals(out)) throw new IllegalStateException("j23 "+out);
     check(m, "W (\"ok\"?1A1A),!", "1\n");
     check(m, "W (\"\"?0A),!", "1\n");
     check(m, "W (\"5\"?1N),!", "1\n");

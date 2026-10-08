@@ -6,7 +6,7 @@ public class J20W20Smoke {
     SqlStore st = new SqlStore(db.getAbsolutePath());
     LineInterp m = new LineInterp(st);
     String out = m.run("L +F:10 J \"W 1\" TSTART S B=1 TROLLBACK L -F W \"j20\",!");
-    if (!out.contains("j20")) throw new IllegalStateException("j20 "+out);
+    if (!"j20\n".equals(out)) throw new IllegalStateException("j20 "+out);
     check(m, "W (\"hi\"?1A1A),!", "1\n");
     check(m, "W (\"\"?0A),!", "1\n");
     check(m, "W (\"3\"?1N),!", "1\n");

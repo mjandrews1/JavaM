@@ -7,7 +7,7 @@ public class J14W14Smoke {
     LineInterp m = new LineInterp(st);
     // J14: two locks + JOB + release
     String out = m.run("L +X,Y J \"W 1\" L -X,Y W \"done\",!");
-    if (!out.contains("done")) throw new IllegalStateException("j14 "+out);
+    if (!"done\n".equals(out)) throw new IllegalStateException("j14 "+out);
     // after L -X,Y both locks are free
     if (!st.lockAcquire("X", "other", 20)) throw new IllegalStateException("X not free");
     st.lockRelease("X", "other");

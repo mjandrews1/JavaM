@@ -28,7 +28,7 @@ public final class J10Smoke {
         // real JOB child
         LineInterp m = new LineInterp(st);
         String out = m.run("J \"S ^JOB=1\" W \"parent\",!");
-        if (!out.contains("parent")) {
+        if (!"parent\n".equals(out)) {
             throw new IllegalStateException("job parent " + out);
         }
         Thread.sleep(200);

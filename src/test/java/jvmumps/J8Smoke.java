@@ -14,7 +14,7 @@ public final class J8Smoke {
             throw new IllegalStateException("read " + out);
         }
         out = m.run("W $PRINCIPAL,\" \",$DEVICE,\" \",$SYSTEM,!");
-        if (!out.contains("JvMumps")) {
+        if (!"0  JvMumps\n".equals(out)) {
             throw new IllegalStateException("w8 " + out);
         }
         out = m.run("W $IO,\" \",$ESTACK,\" \",$STORAGE,!");

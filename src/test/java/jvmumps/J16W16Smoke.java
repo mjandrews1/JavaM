@@ -6,7 +6,7 @@ public class J16W16Smoke {
     SqlStore st = new SqlStore(db.getAbsolutePath());
     LineInterp m = new LineInterp(st);
     String out = m.run("L +P:50 J \"S ^Z=1\" L -P W \"j16\",!");
-    if (!out.contains("j16")) throw new IllegalStateException("j16 "+out);
+    if (!"j16\n".equals(out)) throw new IllegalStateException("j16 "+out);
     check(m, "W (\"aa\"?1\"aa\"),!", "1\n");
     check(m, "W (\"a\"?2A),!", "0\n");
     check(m, "W (\"\"?0A),!", "1\n");

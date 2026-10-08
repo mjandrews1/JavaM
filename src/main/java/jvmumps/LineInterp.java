@@ -21,7 +21,8 @@ public final class LineInterp {
     private final java.util.Map<Integer, Integer> devIdx = new java.util.HashMap<>();
     private int io = 0;
     private int tlevel = 0;
-    private final java.util.List<Object[]> undo = new java.util.ArrayList<>();
+    /** Per-level undo stack (ISO: TROLLBACK undoes only the current transaction level). */
+    private final java.util.List<java.util.List<Object[]>> txUndo = new ArrayList<>();
     private final java.util.Map<String, MValue> undoVals = new java.util.HashMap<>();
 
     public LineInterp() {
@@ -325,7 +326,7 @@ public final class LineInterp {
             List<String> path = parseRef(lhs);
             boolean glob = path.get(0).startsWith("^");
             if (tlevel > 0) {
-                undo.add(new Object[] {path, store.get(path, glob)});
+                txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
             }
             store.set(path, glob, v);
         } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
@@ -377,7 +378,7 @@ public final class LineInterp {
                     boolean glob = path.get(0).startsWith("^");
                     String cur = store.get(path, glob).asStr();
                     if (tlevel > 0) {
-                        undo.add(new Object[] {path, store.get(path, glob)});
+                        txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
                     }
                     store.set(path, glob, MValue.ofString(setPieceOf(cur, del, from, to, newv)));
                 }
@@ -488,30 +489,40 @@ public final class LineInterp {
 
     private void doTStart(Cursor c) {
         tlevel++;
+        txUndo.add(new ArrayList<>());
         c.skipCmd();
     }
 
     private void doTCommit(Cursor c) {
-        if (tlevel > 0) tlevel--;
-        undo.clear();
+        if (tlevel > 0) {
+            tlevel--;
+            // ISO: nested commit stays provisional relative to the outer level —
+            // fold this level's undo into the parent so an outer TROLLBACK still undoes it.
+            List<Object[]> top = txUndo.remove(txUndo.size() - 1);
+            if (!txUndo.isEmpty()) {
+                txUndo.get(txUndo.size() - 1).addAll(top);
+            }
+        }
         undoVals.clear();
         c.skipCmd();
     }
 
     private void doTRollback(Cursor c) {
-        if (tlevel > 0) tlevel--;
-        for (int i = undo.size() - 1; i >= 0; i--) {
-            Object[] u = undo.get(i);
-            @SuppressWarnings("unchecked")
-            List<String> path = (List<String>) u[0];
-            MValue old = (MValue) u[1];
-            if (old == null) {
-                store.kill(path, path.get(0).startsWith("^"));
-            } else {
-                store.set(path, path.get(0).startsWith("^"), old);
+        if (tlevel > 0) {
+            tlevel--;
+            List<Object[]> top = txUndo.remove(txUndo.size() - 1);
+            for (int i = top.size() - 1; i >= 0; i--) {
+                Object[] u = top.get(i);
+                @SuppressWarnings("unchecked")
+                List<String> path = (List<String>) u[0];
+                MValue old = (MValue) u[1];
+                if (old == null) {
+                    store.kill(path, path.get(0).startsWith("^"));
+                } else {
+                    store.set(path, path.get(0).startsWith("^"), old);
+                }
             }
         }
-        undo.clear();
         undoVals.clear();
         c.skipCmd();
     }

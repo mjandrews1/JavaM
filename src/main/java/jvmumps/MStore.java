@@ -172,15 +172,17 @@ public final class MStore implements StoreApi {
 
     /** $QUERY: next defined node in preorder tree walk from a closed ref path. */
     public String queryNext(List<String> path, boolean global, int dir) {
-        // collect all defined paths under name in preorder (parent then kids sorted)
+        if (path == null || path.isEmpty() || path.get(0).isEmpty()) {
+            return queryAnyStart(dir);
+        }
         String name = path.get(0);
         Node root = global ? globals.get(name) : locals.get(name);
         if (root == null) {
+            // $Q(name) with no children yet — next after empty is still empty
             return "";
         }
         List<String[]> found = new java.util.ArrayList<>();
         walk(name, new String[0], root, found, dir);
-        // find current index
         String[] cur = path.subList(1, path.size()).toArray(new String[0]);
         int at = -1;
         for (int i = 0; i < found.size(); i++) {
@@ -196,14 +198,36 @@ public final class MStore implements StoreApi {
         if (nxt < 0 || nxt >= found.size()) {
             return "";
         }
-        String[] s = found.get(nxt);
+        return fmtClosed(name, found.get(nxt));
+    }
+
+    /** $Q("") — first/last defined node across globals then locals. */
+    public String queryAnyStart(int dir) {
+        for (Map.Entry<String, Node> e : globals.entrySet()) {
+            List<String[]> found = new java.util.ArrayList<>();
+            walk(e.getKey(), new String[0], e.getValue(), found, dir);
+            if (!found.isEmpty()) {
+                return fmtClosed(e.getKey(), found.get(dir > 0 ? 0 : found.size() - 1));
+            }
+        }
+        for (Map.Entry<String, Node> e : locals.entrySet()) {
+            List<String[]> found = new java.util.ArrayList<>();
+            walk(e.getKey(), new String[0], e.getValue(), found, dir);
+            if (!found.isEmpty()) {
+                return fmtClosed(e.getKey(), found.get(dir > 0 ? 0 : found.size() - 1));
+            }
+        }
+        return "";
+    }
+
+    static String fmtClosed(String name, String[] subs) {
         StringBuilder sb = new StringBuilder(name);
-        if (s.length > 0) {
+        if (subs.length > 0) {
             sb.append('(');
-            for (int i = 0; i < s.length; i++) {
+            for (int i = 0; i < subs.length; i++) {
                 if (i > 0) sb.append(',');
-                if (numeric(s[i])) sb.append(s[i]);
-                else sb.append('"').append(s[i]).append('"');
+                if (numeric(subs[i])) sb.append(subs[i]);
+                else sb.append('"').append(subs[i]).append('"');
             }
             sb.append(')');
         }
