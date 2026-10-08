@@ -16,6 +16,15 @@ import mjvm.ir.Ir;
 public final class MFrontend {
 
     public List<Ir> compileLine(String line) {
+        return compile(line, true);
+    }
+
+    /** Compile without a trailing RET (for concatenating fragments / loops). */
+    public List<Ir> compileFragment(String line) {
+        return compile(line, false);
+    }
+
+    private List<Ir> compile(String line, boolean terminate) {
         List<Ir> out = new ArrayList<>();
         int i = 0;
         int n = line.length();
@@ -114,7 +123,9 @@ public final class MFrontend {
                 // next command
             }
         }
-        out.add(Ir.ret());
+        if (terminate) {
+            out.add(Ir.ret());
+        }
         return out;
     }
 

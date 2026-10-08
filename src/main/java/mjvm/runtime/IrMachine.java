@@ -47,7 +47,11 @@ public final class IrMachine {
                 case Ir.JMP -> pc = op.iarg;
                 case Ir.JMP0 -> {
                     MValue v = vals[--sp];
-                    if (!MRuntime.truthy(v)) pc = op.iarg;
+                    if (!MRuntime.truthy(v)) {
+                        pc = op.iarg;
+                    } else {
+                        pc++;
+                    }
                 }
                 case Ir.CALL -> rt.call(op.name, op.iarg);
                 case Ir.OPEN -> {
