@@ -185,3 +185,31 @@ Two products, one repo family:
 ```
 
 ---
+
+---
+
+## mJVM install & packaging (M9)
+
+```bash
+# user-local (~/.local)
+./install.sh
+
+# or system-wide
+PREFIX=/usr/local sudo ./install.sh
+```
+
+| Artifact | Path |
+|----------|------|
+| CLI | `$PREFIX/bin/mjvm` |
+| Runtime | `$PREFIX/lib/mjvm/` |
+| Man page | `man/mjvm.1` → `$PREFIX/share/man/man1/mjvm.1` |
+
+```bash
+mjvm -V
+mjvm -h
+man mjvm
+```
+
+**Docs:** `man/mjvm.1` (CLI flags) · `CRITICAL_PATH.md` (M0–M9 gates) · this README (charter).
+
+**Compat:** flags follow `rsm -h`; `RSM_DBFILE` / `MJVM_DBFILE` select the default database.

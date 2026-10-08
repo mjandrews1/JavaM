@@ -27,3 +27,10 @@ run: all
 
 clean:
 	rm -rf $(OUT)
+
+.PHONY: install man
+install:
+	PREFIX=$(PREFIX) ./install.sh
+
+man:
+	man ./man/mjvm.1

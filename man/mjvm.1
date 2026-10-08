@@ -1,0 +1,122 @@
+.TH MJVM 1 "2026-10-08" "mJVM V0.1.0" "User Commands"
+.SH NAME
+mjvm \- JVM-native M, drop-in CLI shaped like Reference Standard M (rsm)
+.SH SYNOPSIS
+.B mjvm
+[\fB\-V\fR]
+.br
+.B mjvm
+\fB\-h\fR
+.br
+.B mjvm
+\fB\-i\fR [\fIdatabase-file\fR]
+.br
+.B mjvm
+\fB\-v\fR \fIvolume-name\fR [\fB\-b\fR \fIblock-size\fR] [\fB\-s\fR \fIdatabase-size\fR] [\fB\-m\fR \fImap-size\fR] [\fB\-e\fR \fIenvironment-name\fR] [\fIdatabase-file\fR]
+.br
+.B mjvm
+\fB\-j\fR \fImax-jobs\fR [\fB\-g\fR \fIglobal-buffers\fR] [\fB\-r\fR \froutine-buffers\fR] [\fIdatabase-file\fR]
+.br
+.B mjvm
+[\fB\-e\fR \fIenvironment-name\fR] [\fB\-x\fR \fIM-commands\fR] [\fB\-R\fR] [\fIdatabase-file\fR]
+.br
+.B mjvm
+\fB\-k\fR [\fIdatabase-file\fR]
+.br
+.B mjvm
+[\fB\-\-class\fR] [\fB\-c\fR \fIM-commands\fR] [\fIfile.m\fR]
+.SH DESCRIPTION
+.B mjvm
+is the CLI for mJVM, a JVM-native full M implementation. The flag surface is a
+drop-in subset of
+.B rsm
+(Reference Standard M): create a database volume, start an environment, run
+M in direct mode or with
+.BR \-x ,
+and shut down with
+.BR \-k .
+.PP
+mJVM compiles M (SET / WRITE / arith / DO / GOTO / devices / JOB / LOCK /
+transactions) to JVM bytecode or an IR machine over the JvMumps
+.B StoreApi
+persistence SPI (memory or SQLite).
+.SH OPTIONS
+.TP
+.B \-V
+Print a short version string.
+.TP
+.B \-h
+Print the help menu (same sections as
+.BR "rsm \-h" ).
+.TP
+.B \-i [\fIdatabase-file\fR]
+Print environment information. If no database file is given, the path is
+taken from
+.B RSM_DBFILE
+or
+.BR MJVM_DBFILE .
+.TP
+.B \-v \fIvolume-name\fR
+Create a database volume (1–32 alpha characters). Optional
+.BR \-b ,
+.BR \-s ,
+.B \-m
+set block size, initial size, and map size.
+.TP
+.B \-j \fImax-jobs\fR
+Initialize and start the environment (prints
+.IR "I AM READY." ).
+.TP
+.B \-x \fIM-commands\fR
+Execute a string of M commands.
+.TP
+.B \-e \fIenvironment-name\fR
+Initial UCI / environment name (default
+.BR manager ).
+.TP
+.B \-R
+Restricted mode.
+.TP
+.B \-k
+Stop jobs and shut down the environment.
+.TP
+.B \-\-class
+Compile to a
+.B .class
+(M2) and run, instead of the IR machine.
+.TP
+.B \-c \fIM-commands\fR
+mJVM extension: run M source (same as
+.BR \-x ).
+.SH ENVIRONMENT
+.TP
+.B RSM_DBFILE
+Default database file path (rsm-compatible).
+.TP
+.B MJVM_DBFILE
+mJVM alias for
+.BR RSM_DBFILE .
+.TP
+.B JAVA_HOME
+JDK used by
+.BR bin/mjvm .
+.SH FILES
+.TP
+.I <database-file>.env
+Volume metadata written by
+.BR \-v .
+.TP
+.I bin/mjvm
+Launcher script.
+.SH EXAMPLES
+.nf
+mjvm \-v DEMO \-b 8 \-s 128 /tmp/demo.dat
+mjvm \-j 4 /tmp/demo.dat
+mjvm \-x 'S X=42 W X,! '
+mjvm \-k /tmp/demo.dat
+.fi
+.SH SEE ALSO
+.BR rsm (1),
+the JvMumps README under the same source tree.
+.SH AUTHORS
+mJVM is part of the JvMumps / mJVM project (RSM-equivalent full M on the JVM).
