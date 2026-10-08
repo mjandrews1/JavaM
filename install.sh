@@ -17,7 +17,7 @@ mkdir -p "$BIN" "$LIB" "$MAN1" "$MAN7" "$LIB/lib"
 if [[ ! -d "$ROOT/build/mjvm" ]]; then
   echo "building…"
   JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home}"
-  (cd "$ROOT" && "$JAVA_HOME/bin/javac" -cp "lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" \
+  (cd "$ROOT" && "$JAVA_HOME/bin/javac" --release 21 -cp "lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" \
       -d build src/main/java/jvmumps/*.java src/main/java/mjvm/*/*.java)
 fi
 cp -R "$ROOT/build/." "$LIB/"

@@ -1,6 +1,7 @@
 # JvMumps J0 — build + corpus runner (no Gradle required)
 JAVA_HOME ?= /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
 JAVAC := $(JAVA_HOME)/bin/javac
+RELEASE ?= 21
 JAVA  := $(JAVA_HOME)/bin/java
 OUT   := build
 LIBS  := lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar
@@ -13,10 +14,10 @@ all: $(OUT)/jvmumps/CorpusRunner.class
 
 $(OUT)/jvmumps/CorpusRunner.class: src/main/java/jvmumps/*.java
 	mkdir -p $(OUT)
-	$(JAVAC) -cp $(LIBS) -d $(OUT) src/main/java/jvmumps/*.java
+	$(JAVAC) --release 21 -cp $(LIBS) -d $(OUT) src/main/java/jvmumps/*.java
 
 smoke: all
-	$(JAVAC) -cp $(CP) -d $(OUT) src/test/java/jvmumps/*.java
+	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/test/java/jvmumps/*.java
 	$(JAVA) -cp $(CP) jvmumps.J0Smoke $(CORPUS)
 	$(JAVA) -cp $(CP) jvmumps.J1Smoke
 	$(JAVA) -cp $(CP) jvmumps.J2Smoke
@@ -28,7 +29,7 @@ run: all
 .PHONY: all smoke run clean mjvm bench install uninstall man dist
 
 mjvm: all
-	$(JAVAC) -cp $(CP) -d $(OUT) src/main/java/mjvm/*/*.java
+	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/main/java/mjvm/*/*.java
 
 bench: mjvm
 	$(JAVA) -cp $(CP) mjvm.bench.MjvmBench 100000
