@@ -25,12 +25,29 @@ smoke: all
 run: all
 	$(JAVA) -cp $(CP) jvmumps.CorpusRunner $(CORPUS)
 
-clean:
-	rm -rf $(OUT)
+.PHONY: all smoke run clean mjvm bench install uninstall man dist
 
-.PHONY: install man
+mjvm: all
+	$(JAVAC) -cp $(CP) -d $(OUT) src/main/java/mjvm/*/*.java
+
+bench: mjvm
+	$(JAVA) -cp $(CP) mjvm.bench.MjvmBench 100000
+
 install:
 	PREFIX=$(PREFIX) ./install.sh
 
+uninstall:
+	rm -f $(PREFIX)/bin/mjvm $(PREFIX)/share/man/man1/mjvm.1 $(PREFIX)/share/man/man7/jvmumps.7
+	rm -rf $(PREFIX)/lib/mjvm
+
 man:
 	man ./man/mjvm.1
+
+dist: mjvm
+	mkdir -p dist/mjvm-0.1.0
+	cp -R build lib bin man docs install.sh README.md CRITICAL_PATH.md dist/mjvm-0.1.0/
+	cd dist && tar czf mjvm-0.1.0.tar.gz mjvm-0.1.0
+	@echo "dist/mjvm-0.1.0.tar.gz"
+
+clean:
+	rm -rf $(OUT) dist

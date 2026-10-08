@@ -213,3 +213,20 @@ man mjvm
 **Docs:** `man/mjvm.1` (CLI flags) · `CRITICAL_PATH.md` (M0–M9 gates) · this README (charter).
 
 **Compat:** flags follow `rsm -h`; `RSM_DBFILE` / `MJVM_DBFILE` select the default database.
+
+### mJVM milestones (M0–M9)
+
+| Milestone | Status |
+|-----------|--------|
+| M0 modules + StoreApi SPI | done |
+| M1 M frontend → IR | done |
+| M2 ClassEmitter (.class) | done |
+| M3 CALL/GOTO invokedynamic | done |
+| M4 store oracle | done |
+| M5 devices OPEN/USE/READ/CLOSE | done |
+| M6 JOB / LOCK / TX | done |
+| M7 `mjvm` CLI drop-in (`rsm` flags) | done |
+| M8 bench + targets + results | done (`docs/mjvm-perf.md`) |
+| M9 docs + packaging | this section · `docs/INSTALL.md` · `man/` |
+
+More detail: `docs/INSTALL.md` (install/uninstall) · `man/mjvm.1` · `man/jvmumps.7` · `docs/mjvm-perf.md`.

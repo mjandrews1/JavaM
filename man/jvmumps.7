@@ -1,0 +1,46 @@
+.TH JVMUMPS 7 "2026-10-08" "JvMumps/mJVM" "Miscellanea"
+.SH NAME
+jvmumps \- JvMumps (Java M) and mJVM (JVM-native M) overview
+.SH DESCRIPTION
+The JvMumps / mJVM tree is a full-M implementation family with
+RSM-equivalent scope. RSM is the model and conformance oracle; layout and
+SLOC may differ.
+.TP
+.B JvMumps
+Full M in Java: interpreter + StoreApi (memory / SQLite), smoke waves
+J0–W310, shared conformance corpus.
+.TP
+.B mJVM
+M as a JVM language: M IR, IrMachine, ClassEmitter (.class), invokedynamic
+CALL/GOTO, devices / JOB / LOCK / transactions, rsm-shaped CLI
+.BR mjvm (1).
+.SH PACKAGE LAYOUT
+.TP
+.I src/main/java/jvmumps/
+JvMumps engine (LineInterp, ExprEval, PatternMatch, StoreApi).
+.TP
+.I src/main/java/mjvm/
+mJVM compiler, IR, runtime, CLI, bench.
+.TP
+.I bin/mjvm
+Launcher.
+.TP
+.I install.sh
+Install to
+.B PREFIX
+(default
+.IR ~/.local ).
+.TP
+.I man/
+Manual pages:
+.BR mjvm (1)
+and this page.
+.TP
+.I docs/mjvm-perf.md
+M8 performance targets and measured results.
+.SH SEE ALSO
+.BR mjvm (1),
+.I CRITICAL_PATH.md
+in the source tree.
+.SH AUTHORS
+JvMumps / mJVM project.

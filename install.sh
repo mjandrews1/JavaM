@@ -7,10 +7,11 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
 LIB="$PREFIX/lib/mjvm"
-MAN="$PREFIX/share/man/man1"
+MAN1="$PREFIX/share/man/man1"
+MAN7="$PREFIX/share/man/man7"
 
 echo "install mJVM -> $PREFIX"
-mkdir -p "$BIN" "$LIB" "$MAN" "$LIB/lib"
+mkdir -p "$BIN" "$LIB" "$MAN1" "$MAN7" "$LIB/lib"
 
 # classes
 if [[ ! -d "$ROOT/build/mjvm" ]]; then
@@ -35,12 +36,14 @@ EOF
 chmod +x "$BIN/mjvm"
 
 # man
-cp "$ROOT/man/mjvm.1" "$MAN/mjvm.1"
+cp "$ROOT/man/mjvm.1" "$MAN1/mjvm.1"
+[[ -f "$ROOT/man/jvmumps.7" ]] && cp "$ROOT/man/jvmumps.7" "$MAN7/jvmumps.7"
 if command -v mandb >/dev/null 2>&1 && [[ -w /var/cache/man ]]; then
   mandb -q || true
 fi
 
 echo "installed:"
 echo "  $BIN/mjvm"
-echo "  $MAN/mjvm.1"
-echo "try:  mjvm -V && man mjvm"
+echo "  $MAN1/mjvm.1"
+echo "  $MAN7/jvmumps.7"
+echo "try:  mjvm -V && man mjvm && man jvmumps"
