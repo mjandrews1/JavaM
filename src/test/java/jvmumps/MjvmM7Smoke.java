@@ -74,6 +74,16 @@ public final class MjvmM7Smoke {
         out = cap(null, new String[] {"-i", db});
         chkContains(out, "status stopped", "M7-status-stop");
 
+        // rsm: RSM_DBFILE env — create without positional db
+        String prev = System.getenv("RSM_DBFILE");
+        // (cannot set env in-process; exercise doInfo null path instead)
+        out = cap(null, new String[] {"-i"});
+        chkContains(out, "RSM_DBFILE", "M7-rsm-dbfile-msg");
+
+        // -x against a live db volume
+        out = cap(null, new String[] {"-x", "S ^G=7 W ^G,!", db});
+        chkContains(out, "7", "M7-x-db");
+
         System.out.println("MjvmM7Smoke OK cases=" + n);
     }
 }

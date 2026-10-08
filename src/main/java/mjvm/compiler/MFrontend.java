@@ -121,7 +121,8 @@ public final class MFrontend {
     private int compileSet(String line, int i, List<Ir> out) {
         i = skipWs(line, i);
         int st = i;
-        while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
+        while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
+                || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
         if (i == st) throw new MError("SET target must be a name");
         String name = line.substring(st, i);
         i = skipWs(line, i);
@@ -231,7 +232,8 @@ public final class MFrontend {
             return i;
         }
         int st = i;
-        while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
+        while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
+                || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
         if (i == st) throw new MError("bad atom at " + line.substring(i));
         out.add(Ir.load(line.substring(st, i)));
         return i;

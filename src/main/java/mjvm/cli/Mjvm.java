@@ -121,13 +121,19 @@ public final class Mjvm {
         if (mode == null) {
             mode = (code != null || file != null) ? "run" : "direct";
         }
+        // rsm: RSM_DBFILE (we also accept MJVM_DBFILE)
+        if (dbFile == null) {
+            String env = System.getenv("MJVM_DBFILE");
+            if (env == null || env.isEmpty()) env = System.getenv("RSM_DBFILE");
+            if (env != null && !env.isEmpty()) dbFile = env;
+        }
 
         return switch (mode) {
             case "info" -> doInfo(dbFile);
             case "create" -> doCreate(volume, blockSize, dbSize, mapSize, envName, dbFile);
             case "start" -> doStart(maxJobs == null ? 16 : maxJobs, gbuf, rbuf, dbFile, envName);
             case "kill" -> doKill(dbFile);
-            case "run" -> doRun(code, file, useClass);
+            case "run" -> doRun(code, file, useClass, dbFile);
             default -> doDirect(dbFile, code, envName, restricted, useClass);
         };
     }
@@ -177,8 +183,14 @@ public final class Mjvm {
     static int doInfo(String dbFile) throws Exception {
         Path db = Path.of(dbFile == null ? "mjvm.dat" : dbFile);
         Path env = envFile(dbFile);
-        System.out.println("mJVM environment");
-        System.out.println("  version     " + VERSION);
+        if (dbFile == null) {
+            System.out.println("Please pass database file path or set RSM_DBFILE");
+        }
+        System.out.println("mJVM " + VERSION);
+        System.out.println("Drop-in CLI shaped like Reference Standard M (rsm)");
+        System.out.println("Database Version: 1\tCompiler Version: 1");
+        System.out.println();
+        System.out.println("Database Volume and Environment Configuration Information:");
         System.out.println("  database    " + db.toAbsolutePath());
         System.out.println("  exists      " + Files.exists(db));
         if (Files.exists(env)) {
@@ -253,14 +265,16 @@ public final class Mjvm {
         return 0;
     }
 
-    static int doRun(String code, String file, boolean useClass) throws Exception {
+    static int doRun(String code, String file, boolean useClass, String dbFile) throws Exception {
         if (code == null && file != null) {
             code = Files.readString(Path.of(file));
         }
         if (code == null) {
             code = new String(System.in.readAllBytes());
         }
-        StoreApi store = new MStore();
+        StoreApi store = dbFile != null && Files.exists(Path.of(dbFile))
+                ? new SqlStore(dbFile)
+                : new MStore();
         MRuntime rt = new MRuntime(store);
         runCode(rt, code, useClass);
         System.out.print(rt.output());

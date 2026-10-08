@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# mjvm — drop-in launcher shaped like `rsm`
+# Usage: mjvm [rsm-flags…]   (see mjvm -h)
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home}"
+if [[ ! -x "$JAVA_HOME/bin/java" ]]; then
+  JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}"
+fi
+CP="${MJVM_CP:-$HERE/build:$HERE/lib/sqlite-jdbc.jar:$HERE/lib/slf4j-api.jar:$HERE/lib/slf4j-nop.jar}"
+export RSM_DBFILE="${RSM_DBFILE:-${MJVM_DBFILE:-}}"
+exec "$JAVA_HOME/bin/java" -cp "$CP" mjvm.cli.Mjvm "$@"
