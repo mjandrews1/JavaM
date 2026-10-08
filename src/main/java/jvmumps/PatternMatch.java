@@ -69,10 +69,18 @@ public final class PatternMatch {
         }
         int min = nmin;
         int max = sawDot ? nmax : nmin;
+        // ISO/R2: `n.` / `.` are bounded only by remaining subject (not a fixed 64).
         if (max == Integer.MAX_VALUE) {
-            max = 64; // bound for backtracking safety
+            max = s.length() - si;
         }
-        // try k occurrences from min to max
+        // Empty literal is 0-width: any k in range works for the atom; try min only.
+        if (isLit && lit.isEmpty()) {
+            if (min <= max && match(s, pat, si, j, full)) {
+                return true;
+            }
+            return false;
+        }
+        // try k occurrences from max down to min (greedy with backtrack)
         for (int k = max; k >= min; k--) {
             int ns = si;
             boolean ok = true;
