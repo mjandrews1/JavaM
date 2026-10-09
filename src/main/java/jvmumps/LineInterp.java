@@ -150,7 +150,13 @@ public final class LineInterp {
         for (String part : line.split("\n", -1)) {
             Cursor c = new Cursor(part);
             while (!c.atEnd() && !quit) {
+                int before = c.i;
                 execOne(c);
+                // ISO SET args are comma-separated; also guard against
+                // a command that consumes nothing (would spin).
+                if (c.i == before && !c.atEnd()) {
+                    c.next();
+                }
             }
         }
     }
@@ -313,76 +319,87 @@ public final class LineInterp {
     }
 
     private void doSet(Cursor c) {
-        c.skipWs();
-        String lhs = c.readRefToken();
-        c.skipWs();
-        if (c.peek() != '=') {
-            c.skipCmd();
-            return;
-        }
-        c.next();
-        MValue v = eval.eval(c.readExpr());
-        if (!lhs.startsWith("$")) {
-            List<String> path = parseRef(lhs);
-            boolean glob = path.get(0).startsWith("^");
-            if (tlevel > 0) {
-                txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
+        // SET var=expr[,var=expr…]  (ISO 8.1.2)
+        for (;;) {
+            c.skipWs();
+            if (c.atEnd()) break;
+            String lhs = c.readRefToken();
+            c.skipWs();
+            if (c.peek() != '=') {
+                c.skipCmd();
+                return;
             }
-            store.set(path, glob, v);
-        } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
-            // SET $PIECE(ref,d,f[,t])=val
-            int lp = lhs.indexOf('(');
-            if (lp > 0) {
-                String inner = lhs.substring(lp + 1, lhs.lastIndexOf(')'));
-                // first arg is ref name (maybe with subs)
-                List<String> parts = new ArrayList<>();
-                StringBuilder sb = new StringBuilder();
-                int depth = 0;
-                boolean inS = false;
-                for (char ch : inner.toCharArray()) {
-                    if (inS) {
-                        sb.append(ch);
-                        if (ch == '"') {
-                            inS = false;
+            c.next();
+            MValue v = eval.eval(c.readExpr());
+            if (!lhs.startsWith("$")) {
+                List<String> path = parseRef(lhs);
+                boolean glob = path.get(0).startsWith("^");
+                if (tlevel > 0) {
+                    txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
+                }
+                store.set(path, glob, v);
+            } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
+                // SET $PIECE(ref,d,f[,t])=val
+                int lp = lhs.indexOf('(');
+                if (lp > 0) {
+                    String inner = lhs.substring(lp + 1, lhs.lastIndexOf(')'));
+                    // first arg is ref name (maybe with subs)
+                    List<String> parts = new ArrayList<>();
+                    StringBuilder sb = new StringBuilder();
+                    int depth = 0;
+                    boolean inS = false;
+                    for (char ch : inner.toCharArray()) {
+                        if (inS) {
+                            sb.append(ch);
+                            if (ch == '"') {
+                                inS = false;
+                            }
+                            continue;
                         }
-                        continue;
+                        if (ch == '"') {
+                            inS = true;
+                            sb.append(ch);
+                            continue;
+                        }
+                        if (ch == '(') {
+                            depth++;
+                            sb.append(ch);
+                        } else if (ch == ')') {
+                            depth--;
+                            sb.append(ch);
+                        } else if (ch == ',' && depth == 0) {
+                            parts.add(sb.toString().trim());
+                            sb.setLength(0);
+                        } else {
+                            sb.append(ch);
+                        }
                     }
-                    if (ch == '"') {
-                        inS = true;
-                        sb.append(ch);
-                        continue;
-                    }
-                    if (ch == '(') {
-                        depth++;
-                        sb.append(ch);
-                    } else if (ch == ')') {
-                        depth--;
-                        sb.append(ch);
-                    } else if (ch == ',' && depth == 0) {
+                    if (sb.length() > 0) {
                         parts.add(sb.toString().trim());
-                        sb.setLength(0);
-                    } else {
-                        sb.append(ch);
                     }
-                }
-                if (sb.length() > 0) {
-                    parts.add(sb.toString().trim());
-                }
-                if (parts.size() >= 3) {
-                    String ref = parts.get(0);
-                    String del = eval.eval(parts.get(1)).asStr();
-                    int from = (int) eval.eval(parts.get(2)).asNum();
-                    int to = parts.size() > 3 ? (int) eval.eval(parts.get(3)).asNum() : from;
-                    String newv = v.asStr();
-                    List<String> path = parseRef(ref);
-                    boolean glob = path.get(0).startsWith("^");
-                    String cur = store.get(path, glob).asStr();
-                    if (tlevel > 0) {
-                        txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
+                    if (parts.size() >= 3) {
+                        String ref = parts.get(0);
+                        String del = eval.eval(parts.get(1)).asStr();
+                        int from = (int) eval.eval(parts.get(2)).asNum();
+                        int to = parts.size() > 3 ? (int) eval.eval(parts.get(3)).asNum() : from;
+                        String newv = v.asStr();
+                        List<String> path = parseRef(ref);
+                        boolean glob = path.get(0).startsWith("^");
+                        String cur = store.get(path, glob).asStr();
+                        if (tlevel > 0) {
+                            txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
+                        }
+                        store.set(path, glob, MValue.ofString(setPieceOf(cur, del, from, to, newv)));
                     }
-                    store.set(path, glob, MValue.ofString(setPieceOf(cur, del, from, to, newv)));
                 }
             }
+            // next assignment after comma
+            c.skipWs();
+            if (c.peek() == ',') {
+                c.next();
+                continue;
+            }
+            break;
         }
         test = true;
     }

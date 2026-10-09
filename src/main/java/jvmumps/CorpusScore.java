@@ -14,7 +14,9 @@ public final class CorpusScore {
         Engine eng = new LineEngine();
         int match = 0, miss = 0, err = 0;
         for (CorpusCase c : cases) {
-            if (!(c.name.equals(prefix) || c.name.startsWith(prefix + "."))) {
+            boolean use = "*".equals(prefix) || prefix.equals("") ||
+                c.name.equals(prefix) || c.name.startsWith(prefix);
+            if (!use) {
                 continue;
             }
             eng.reset();
