@@ -79,14 +79,14 @@ mJVM **M1+** waits on JvMumps J1–J2 (values + commands) so the frontend is not
 ## Catch-up (2026-10-09) — J12–J17 / M10–M12
 
 **Target:** both parts at peer level `MATCH=131 MISS=8 ERR=0` (misses = RSM upstream-bug set).
-**Baseline:** JvMumps **111/28/0** · mJVM 8/3/128. **Plan:** [`docs/CATCHUP-2026-10.md`](docs/CATCHUP-2026-10.md).
+**Baseline:** JvMumps **119/20/0** · mJVM 8/3/128. **Plan:** [`docs/CATCHUP-2026-10.md`](docs/CATCHUP-2026-10.md).
 
 | ID | Task | Cases | Ticket |
 |----|------|------:|--------|
 | **J12** | Symbols, literals, quoted strings | ✅ J12SymLitSmoke | jvmumps#7 |
 | **J12b** | Indirection `@` | ✅ | jvmumps#7 |
 | **J13** | DO/GOTO/XECUTE/extrinsic | ✅ | jvmumps#8 |
-| **J14** | Traps + `$Z*` specials | 8 | jvmumps#9 |
+| **J14** | Traps + `$Z*` specials | ✅ | jvmumps#9 |
 | **J15** | WRITE device params + `$X`/`$Y` | 6 | jvmumps#10 |
 | **J16** | FOR/`$STACK`/`$TEXT`/SET `$EXTRACT` | 7 | jvmumps#11 |
 | **J17** | ISO `=` flip (C24) | 1 | jvmumps#12 |

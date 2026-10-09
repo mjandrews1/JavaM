@@ -64,6 +64,10 @@ public final class ExprEval {
     private final java.util.Map<MValue, String> refOf = new java.util.IdentityHashMap<>();
     String lastRef;
     public int vx, vy;
+    /** J14: trap specials (SET/GET). */
+    public String etrap = "";
+    public String ecode = "";
+    public String ztrap = "";
 
     public MValue eval(String src) {
         List<Tok> toks = lex(src);
@@ -1148,9 +1152,21 @@ public final class ExprEval {
                 case "$ESTACK":
                     return MValue.ofNumber(0);
                 case "$ECODE":
-                    return MValue.ofString("");
+                    return MValue.ofString(ecode);
                 case "$ETRAP":
-                    return MValue.ofString("");
+                    return MValue.ofString(etrap);
+                case "$ZTRAP":
+                    return MValue.ofString(ztrap);
+                case "$ZVERSION":
+                    return MValue.ofString("JvMumps");
+                case "$ZJOB":
+                    return MValue.ofNumber(1);
+                case "$ZLEVEL":
+                    return MValue.ofNumber(0);
+                case "$ZSYSTEM":
+                    return MValue.ofString("JvMumps");
+                case "$ZEOF":
+                    return MValue.ofNumber(0);
                 case "$STORAGE":
                     return MValue.ofNumber(1000000);
                 case "$SYSTEM":

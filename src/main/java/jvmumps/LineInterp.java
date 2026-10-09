@@ -64,6 +64,7 @@ public final class LineInterp {
     private final Map<String, Integer> tags = new LinkedHashMap<>();
     private MValue extrinsicValue = MValue.EMPTY;
     private boolean routineMode = false;
+    private boolean trapFiring = false;
 
     public LineInterp() {
         this(new MStore());
@@ -201,13 +202,53 @@ public final class LineInterp {
             Cursor c = new Cursor(part);
             while (!c.atEnd() && !quit) {
                 int before = c.i;
-                execOne(c);
-                // ISO SET args are comma-separated; also guard against
-                // a command that consumes nothing (would spin).
-                if (c.i == before && !c.atEnd()) {
+                if (!execOneTrapped(c) && !c.atEnd() && c.i == before) {
                     c.next();
                 }
             }
+        }
+    }
+
+    /**
+     * J14: run one command; on MError fire $ETRAP/$ZTRAP if set.
+     * Returns true if the command ran without a trap-handled error.
+     */
+    private boolean execOneTrapped(Cursor c) {
+        try {
+            int before = c.i;
+            execOne(c);
+            return true;
+        } catch (MError e) {
+            String trap = !eval.etrap.isEmpty() ? eval.etrap : eval.ztrap;
+            if (trap.isEmpty() || trapFiring) {
+                throw e;
+            }
+            // abandon the rest of the failed command
+            try {
+                c.skipCmd();
+            } catch (RuntimeException ignored) {
+                c.skipToEnd();
+            }
+            trapFiring = true;
+            try {
+                Cursor tc = new Cursor(trap);
+                while (!tc.atEnd() && !quit) {
+                    int b = tc.i;
+                    try {
+                        execOne(tc);
+                    } catch (MError e2) {
+                        if (tc.i == b) {
+                            tc.next();
+                        }
+                    }
+                    if (tc.i == b && !tc.atEnd()) {
+                        tc.next();
+                    }
+                }
+            } finally {
+                trapFiring = false;
+            }
+            return false;
         }
     }
 
@@ -308,7 +349,7 @@ public final class LineInterp {
             Cursor c = new Cursor(body);
             while (!c.atEnd() && !quit && pc == pcBefore && pendingRest == null) {
                 int before = c.i;
-                execOne(c);
+                execOneTrapped(c);
                 if (c.i == before && !c.atEnd()) {
                     c.next();
                 }
@@ -843,6 +884,12 @@ public final class LineInterp {
                     txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
                 }
                 store.set(path, glob, v);
+            } else if (lhs.equalsIgnoreCase("$ETRAP")) {
+                eval.etrap = v.asStr();
+            } else if (lhs.equalsIgnoreCase("$ECODE")) {
+                eval.ecode = v.asStr();
+            } else if (lhs.equalsIgnoreCase("$ZTRAP")) {
+                eval.ztrap = v.asStr();
             } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
                 // SET $PIECE(ref,d,f[,t])=val
                 int lp = lhs.indexOf('(');
