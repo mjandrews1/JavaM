@@ -13,14 +13,14 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 | Stack | MATCH | MISS | ERR |
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
-| **JvMumps** | 119 | 20 | 0 | (was 97/42/0) |
+| **JvMumps** | 125 | 14 | 0 | (was 97/42/0) |
 | **mJVM** | 8 | 3 | 128 |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
 
 ---
 
-## Part 1 — JvMumps (119/20/0 → 131/8/0)
+## Part 1 — JvMumps (125/14/0 → 131/8/0)
 
 7 of 8 upstream-bug cases already diverge ISO-correctly (T11/T12/T15/C16). Remaining work = **35 real gaps** + **1 ISO flip** (`C24.eq-noncanonical`).
 
@@ -51,7 +51,7 @@ Also green: C61–C64, C68, C73, C76 (name/closed/computed/expr/global/levels/pr
 
 **Impl:** argument indirection in `doWrite` (comma-split reparse) · `@` SET/KILL targets · `@` in `$D`/`$O` ref keys · undefined-parent (`$DATA` 10) is not a value.
 
-**Corpus:** 97/42/0 → 102/37/0 (J12b) → 111/28/0 (J13) → **119/20/0** (J14).
+**Corpus:** 97/42/0 → 102/37/0 (J12b) → 111/28/0 (J13) → 119/20/0 (J14) → **125/14/0** (J15).
 
 Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 
@@ -88,16 +88,20 @@ External-routine cases (C103–C105, C107, `^SUB`) still open — need `routines
 
 Gate: C113–C128 MATCH.
 
-### Wave J15 — WRITE device params + `$X`/`$Y` (6) · jvmumps#10
+### Wave J15 — WRITE device params + `$X`/`$Y` ✅ · jvmumps#10
 
-| Case | Want |
-|------|------|
-| C121.write-char | `W *n` char |
-| C122.write-char-nl | `W *n` + `!` |
-| C123.write-col | `W ?n` column |
-| C124.write-ff | `W #` form feed |
-| C90.xy-after-write | `$X`/`$Y` after WRITE |
-| C92.xy-set-x | `S $X=…` |
+| Case | Want | Status |
+|------|------|--------|
+| C121.write-char | `W *n` char | ✅ |
+| C122.write-char-nl | `W *n` + `!` | ✅ |
+| C123.write-col | `W ?n` column | ✅ |
+| C124.write-ff | `W #` form feed | ✅ |
+| C90.xy-after-write | `$X`/`$Y` after WRITE | ✅ |
+| C92.xy-set-x | `S $X=…` | ✅ |
+
+Also green: C91 xy-after-nl.
+
+**Impl:** line-oriented `doWrite` (flush on `!`/`#`/`*10` + trailing line, `$X` kept across trailing flush) · `*n`/`?n`/`#` · `SET $X`/`$Y`.
 
 Gate: C90, C92, C121–C124 MATCH.
 
@@ -185,7 +189,7 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 | J12b indirection `@` | ✅ 102/37/0 | jvmumps#7 |
 | J13 DO/GOTO/XECUTE/$$ | ✅ 111/28/0 | jvmumps#8 |
 | J14 traps + `$Z*` | ✅ 119/20/0 | jvmumps#9 |
-| J15 WRITE + `$X$Y` | jvmumps#10 |
+| J15 WRITE + `$X$Y` | ✅ 125/14/0 | jvmumps#10 |
 | J16 FOR/`$STACK`/SET `$E` | jvmumps#11 |
 | J17 ISO `=` flip | jvmumps#12 |
 | M10 commands | jvmumps#13 |

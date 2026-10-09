@@ -802,7 +802,9 @@ public final class LineInterp {
     }
 
     private void doWrite(Cursor c) {
-        StringBuilder sb = new StringBuilder();
+        // Line-oriented (shared corpus / PyMumps): each WRITE flushes lines on
+        // ! / # / *10 and a trailing flush. Append each line + \n to out.
+        StringBuilder buf = new StringBuilder();
         while (!c.atEnd()) {
             c.skipWs();
             if (c.atEnd()) {
@@ -814,20 +816,37 @@ public final class LineInterp {
             }
             if (c.peek() == '!') {
                 c.next();
-                sb.append('\n');
-                vx = 0;
-                vy++;
-                eval.vx = vx;
-                eval.vy = vy;
+                flushWriteLine(buf);
                 continue;
             }
             if (c.peek() == '#') {
                 c.next();
+                flushWriteLine(buf);
                 continue;
             }
             if (c.peek() == '?') {
                 c.next();
-                c.readExpr();
+                String ex = c.readExpr();
+                int n = (int) eval.eval(ex).asNum();
+                if (n > vx) {
+                    buf.append(" ".repeat(n - vx));
+                    vx = n;
+                    eval.vx = vx;
+                }
+                continue;
+            }
+            if (c.peek() == '*') {
+                c.next();
+                String ex = c.readExpr();
+                int code = (int) eval.eval(ex).asNum();
+                if (code == 10) {
+                    flushWriteLine(buf);
+                } else {
+                    char ch = (code >= 0 && code <= 255) ? (char) code : '?';
+                    buf.append(ch);
+                    vx++;
+                    eval.vx = vx;
+                }
                 continue;
             }
             // next command?
@@ -842,7 +861,7 @@ public final class LineInterp {
                 for (String part : splitTopCommas(text)) {
                     MValue v = eval.eval(part);
                     String s = v.isnum ? ExprEval.mstr(v.num) : v.str;
-                    sb.append(s);
+                    buf.append(s);
                     vx += s.length();
                     eval.vx = vx;
                     eval.vy = vy;
@@ -851,13 +870,28 @@ public final class LineInterp {
             }
             MValue v = eval.eval(c.readExpr());
             String s = v.isnum ? ExprEval.mstr(v.num) : v.str;
-            sb.append(s);
+            buf.append(s);
             vx += s.length();
             eval.vx = vx;
             eval.vy = vy;
         }
-        out.append(sb);
+        if (buf.length() > 0) {
+            // end-of-WRITE line break does not reset $X/$Y (C90)
+            out.append(buf);
+            out.append('\n');
+            buf.setLength(0);
+        }
         test = true;
+    }
+
+    private void flushWriteLine(StringBuilder buf) {
+        out.append(buf);
+        out.append('\n');
+        buf.setLength(0);
+        vx = 0;
+        vy++;
+        eval.vx = vx;
+        eval.vy = vy;
     }
 
     private void doSet(Cursor c) {
@@ -890,6 +924,12 @@ public final class LineInterp {
                 eval.ecode = v.asStr();
             } else if (lhs.equalsIgnoreCase("$ZTRAP")) {
                 eval.ztrap = v.asStr();
+            } else if (lhs.equalsIgnoreCase("$X")) {
+                vx = (int) v.asNum();
+                eval.vx = vx;
+            } else if (lhs.equalsIgnoreCase("$Y")) {
+                vy = (int) v.asNum();
+                eval.vy = vy;
             } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
                 // SET $PIECE(ref,d,f[,t])=val
                 int lp = lhs.indexOf('(');
