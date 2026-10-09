@@ -21,6 +21,7 @@ smoke: all
 	$(JAVA) -cp $(CP) jvmumps.J0Smoke $(CORPUS)
 	$(JAVA) -cp $(CP) jvmumps.J1Smoke
 	$(JAVA) -cp $(CP) jvmumps.J2Smoke
+	$(JAVA) -cp $(CP) jvmumps.J12SymLitSmoke
 	$(JAVA) -cp $(CP) jvmumps.J7PersistSmoke
 
 run: all

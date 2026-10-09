@@ -24,7 +24,20 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 
 7 of 8 upstream-bug cases already diverge ISO-correctly (T11/T12/T15/C16). Remaining work = **35 real gaps** + **1 ISO flip** (`C24.eq-noncanonical`).
 
-### Wave J12 — Indirection `@` (5) · jvmumps#7
+### Wave J12 — Symbols, literals, quoted strings ✅ · jvmumps#7
+
+**Foundation** for the catch-up: name tokens (local/global/`%`/`$`), numeric literals (int/frac/exp + mstr display), quoted strings (empty, embedded `""`, concat). Covered by `jvmumps.J12SymLitSmoke` (49 cases, in `make smoke`).
+
+| Area | Cases |
+|------|-------|
+| Quoted strings | empty `""` · `""""` → `"` · `"say ""hi"""` · concat |
+| Numeric literals | `0` `1.5` `.5` `-0.5` `1E2` `1.5E-2` mstr `.5`/`-.25` |
+| Symbols | locals `A` `B1` `%A` `%Z1` · globals `^G` `^%G` · subscripts · `$NAME` |
+| Mixed | `"n="_N` · `1_2_3` · string-lit + symbol |
+
+**Status:** suite green. Remaining symbol work is **indirection `@`** (below) and the parity clusters J13–J17.
+
+### Wave J12b — Indirection `@` (5) · jvmumps#7
 
 | Case | Want |
 |------|------|
@@ -145,7 +158,8 @@ Then full corpus + FileMan smoke.
 ## Order of attack
 
 ```
-  J12 indirection ──► J13 DO/GOTO/XECUTE ──► J16 FOR/$STACK/SET $E
+  J12 symbols/literals/quotes  ✅  (J12SymLitSmoke in make smoke)
+  J12b indirection ──► J13 DO/GOTO/XECUTE ──► J16 FOR/$STACK/SET $E
   J14 traps/$Z*   ──► J15 WRITE/$X$Y
   J17 ISO = flip   (last JvMumps item; confirms miss-set identity)
   M10 commands    ──► M11 calls/intrinsics ──► M12 numerics + gate
@@ -157,7 +171,8 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 
 | Wave | Issue |
 |------|-------|
-| J12 indirection | jvmumps#7 |
+| J12 symbols/literals/quoted strings | ✅ smoke | jvmumps#7 |
+| J12b indirection `@` | jvmumps#7 |
 | J13 DO/GOTO/XECUTE | jvmumps#8 |
 | J14 traps + `$Z*` | jvmumps#9 |
 | J15 WRITE + `$X$Y` | jvmumps#10 |

@@ -83,7 +83,8 @@ mJVM **M1+** waits on JvMumps J1–J2 (values + commands) so the frontend is not
 
 | ID | Task | Cases | Ticket |
 |----|------|------:|--------|
-| **J12** | Indirection `@` | 5 | jvmumps#7 |
+| **J12** | Symbols, literals, quoted strings | ✅ J12SymLitSmoke | jvmumps#7 |
+| **J12b** | Indirection `@` | 5 | jvmumps#7 |
 | **J13** | DO/GOTO/XECUTE/extrinsic | 9 | jvmumps#8 |
 | **J14** | Traps + `$Z*` specials | 8 | jvmumps#9 |
 | **J15** | WRITE device params + `$X`/`$Y` | 6 | jvmumps#10 |
