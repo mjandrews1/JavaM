@@ -13,14 +13,14 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 | Stack | MATCH | MISS | ERR |
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
-| **JvMumps** | 125 | 14 | 0 | (was 97/42/0) |
+| **JvMumps** | 132 | 7 | 0 | (was 97/42/0) |
 | **mJVM** | 8 | 3 | 128 |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
 
 ---
 
-## Part 1 — JvMumps (125/14/0 → 131/8/0)
+## Part 1 — JvMumps (132/7/0 → 131/8/0)
 
 7 of 8 upstream-bug cases already diverge ISO-correctly (T11/T12/T15/C16). Remaining work = **35 real gaps** + **1 ISO flip** (`C24.eq-noncanonical`).
 
@@ -51,7 +51,7 @@ Also green: C61–C64, C68, C73, C76 (name/closed/computed/expr/global/levels/pr
 
 **Impl:** argument indirection in `doWrite` (comma-split reparse) · `@` SET/KILL targets · `@` in `$D`/`$O` ref keys · undefined-parent (`$DATA` 10) is not a value.
 
-**Corpus:** 97/42/0 → 102/37/0 (J12b) → 111/28/0 (J13) → 119/20/0 (J14) → **125/14/0** (J15).
+**Corpus:** 97/42/0 → 102/37/0 (J12b) → 111/28/0 (J13) → 119/20/0 (J14) → 125/14/0 (J15) → **132/7/0** (J16).
 
 Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 
@@ -105,7 +105,7 @@ Also green: C91 xy-after-nl.
 
 Gate: C90, C92, C121–C124 MATCH.
 
-### Wave J16 — FOR/NEXT + `$STACK`/`$TEXT` + SET `$EXTRACT` (7) · jvmumps#11
+### Wave J16 — FOR/NEXT + `$STACK`/`$TEXT` + SET `$EXTRACT` ✅ · jvmumps#11
 
 | Case | Want |
 |------|------|
@@ -117,7 +117,9 @@ Gate: C90, C92, C121–C124 MATCH.
 | C49.set-extract | `S $E(S,2,3)="XY"` writeback |
 | C81.bare-q-special | bare `$Q` is `$QUIT` (0 in direct mode) |
 
-Gate: C49, C69–C71, C81, C86–C87 MATCH.
+Gate: C49, C69–C71, C81, C86–C87 MATCH. **All ✅.**
+
+**Impl:** `$NEXT`/`$N` (forward `$ORDER`) · `$ST`/`$STACK` direct-mode frame · `$TEXT` name-arg (no var lookup) · `SET $EXTRACT` writeback · bare `$Q` = `$QUIT`.
 
 ### Wave J17 — ISO `=` flip (1) · jvmumps#12
 
@@ -190,7 +192,7 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 | J13 DO/GOTO/XECUTE/$$ | ✅ 111/28/0 | jvmumps#8 |
 | J14 traps + `$Z*` | ✅ 119/20/0 | jvmumps#9 |
 | J15 WRITE + `$X$Y` | ✅ 125/14/0 | jvmumps#10 |
-| J16 FOR/`$STACK`/SET `$E` | jvmumps#11 |
+| J16 FOR/`$STACK`/SET `$E` | ✅ 132/7/0 | jvmumps#11 |
 | J17 ISO `=` flip | jvmumps#12 |
 | M10 commands | jvmumps#13 |
 | M11 calls/intrinsics | jvmumps#14 |

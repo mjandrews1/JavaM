@@ -713,10 +713,30 @@ public final class ExprEval {
 
         MValue callIntrinsic(String name) {
             String up = name.toUpperCase();
+            if (up.equals("$TEXT")) {
+                // C71 — argument is a label/ref, not a variable lookup
+                if (peek().kind == Kind.LP) {
+                    i++;
+                    while (!atEnd() && peek().kind != Kind.RP) {
+                        i++;
+                    }
+                    if (peek().kind == Kind.RP) {
+                        i++;
+                    }
+                }
+                return MValue.ofString("");
+            }
             if (up.equals("$G") || up.equals("$GET") || up.equals("$D") || up.equals("$DATA")
                     || up.equals("$NA") || up.equals("$NAME") || up.equals("$I")
                     || up.equals("$INCREMENT") || up.equals("$O") || up.equals("$ORDER")
+                    || up.equals("$NEXT") || up.equals("$N")
                     || up.equals("$Q") || up.equals("$QUERY")) {
+                // bare $Q is $QUIT special (C81), not $QUERY
+                if ((up.equals("$Q") || up.equals("$QUERY")) && peek().kind != Kind.LP) {
+                    if (up.equals("$Q")) {
+                        return MValue.ofNumber(0);
+                    }
+                }
                 if (peek().kind == Kind.LP) {
                     i++;
                     String key = readRefKey();
@@ -1121,6 +1141,13 @@ public final class ExprEval {
                         double dir = args.size() > 1 ? args.get(1).asNum() : 1;
                         return MValue.ofString(env.order(key, dir));
                     }
+                case "$NEXT":
+                case "$N":
+                    {
+                        // ISO $NEXT — forward $ORDER only (C86/C87)
+                        String key = lastRef != null ? lastRef : (args.isEmpty() ? "" : args.get(0).asStr());
+                        return MValue.ofString(env.order(key, 1));
+                    }
                 case "$Q":
                 case "$QUERY":
                     {
@@ -1151,6 +1178,28 @@ public final class ExprEval {
                     return MValue.ofString(lastRef == null ? "" : lastRef);
                 case "$ESTACK":
                     return MValue.ofNumber(0);
+                case "$STACK":
+                    return MValue.ofNumber(0);
+                case "$ST":
+                case "$STACKLEVEL":
+                    {
+                        // C69/C70/C72 — direct-mode stack frame
+                        if (args.isEmpty()) {
+                            return MValue.ofString("RUN");
+                        }
+                        double lev = args.get(0).asNum();
+                        String what = args.size() > 1 ? args.get(1).asStr().toUpperCase() : "";
+                        if (what.equals("PLACE")) {
+                            return MValue.ofString(lev == 0 ? "@" : "");
+                        }
+                        if (lev == 0) {
+                            return MValue.ofString("RUN");
+                        }
+                        if (lev == -1) {
+                            return MValue.ofString("0");
+                        }
+                        return MValue.ofString("");
+                    }
                 case "$ECODE":
                     return MValue.ofString(ecode);
                 case "$ETRAP":

@@ -930,6 +930,24 @@ public final class LineInterp {
             } else if (lhs.equalsIgnoreCase("$Y")) {
                 vy = (int) v.asNum();
                 eval.vy = vy;
+            } else if (isExtractSet(lhs)) {
+                // SET $EXTRACT(ref,from[,to])=val (C49)
+                int lp = lhs.indexOf('(');
+                String inner = lhs.substring(lp + 1, lhs.lastIndexOf(')'));
+                List<String> parts = splitTopCommas(inner);
+                if (parts.size() >= 2) {
+                    String ref = parts.get(0);
+                    int from = (int) eval.eval(parts.get(1)).asNum();
+                    int to = parts.size() > 2 ? (int) eval.eval(parts.get(2)).asNum() : from;
+                    String newv = v.asStr();
+                    List<String> path = parseRef(ref);
+                    boolean glob = path.get(0).startsWith("^");
+                    String cur = store.get(path, glob).asStr();
+                    if (tlevel > 0) {
+                        txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
+                    }
+                    store.set(path, glob, MValue.ofString(setExtractOf(cur, from, to, newv)));
+                }
             } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
                 // SET $PIECE(ref,d,f[,t])=val
                 int lp = lhs.indexOf('(');
@@ -994,6 +1012,34 @@ public final class LineInterp {
             break;
         }
         test = true;
+    }
+
+    static boolean isExtractSet(String lhs) {
+        String u = lhs.toUpperCase();
+        return u.startsWith("$E(") || u.startsWith("$EXTRACT(")
+                || u.equals("$E") || u.equals("$EXTRACT");
+    }
+
+    /** SET $EXTRACT(s,from[,to])=v — replace chars from..to (1-based inclusive). */
+    static String setExtractOf(String s, int from, int to, String v) {
+        if (to < from) {
+            to = from;
+        }
+        if (from < 1) {
+            from = 1;
+        }
+        int n = s.length();
+        if (from > n) {
+            // pad with spaces to reach from
+            StringBuilder sb = new StringBuilder(s);
+            while (sb.length() < from - 1) {
+                sb.append(' ');
+            }
+            sb.append(v);
+            return sb.toString();
+        }
+        int end = Math.min(to, n);
+        return s.substring(0, from - 1) + v + s.substring(end);
     }
 
     /** SET $PIECE(s,d,f[,t])=v — replace pieces f..t with v. */
