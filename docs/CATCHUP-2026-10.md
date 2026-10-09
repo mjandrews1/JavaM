@@ -13,14 +13,14 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 | Stack | MATCH | MISS | ERR |
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
-| **JvMumps** | 132 | 7 | 0 | (was 97/42/0) |
+| **JvMumps** | **131** | **8** | **0** | **target — miss names = upstream set** |
 | **mJVM** | 8 | 3 | 128 |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
 
 ---
 
-## Part 1 — JvMumps (132/7/0 → 131/8/0)
+## Part 1 — JvMumps ✅ **131/8/0** (target hit)
 
 7 of 8 upstream-bug cases already diverge ISO-correctly (T11/T12/T15/C16). Remaining work = **35 real gaps** + **1 ISO flip** (`C24.eq-noncanonical`).
 
@@ -51,7 +51,7 @@ Also green: C61–C64, C68, C73, C76 (name/closed/computed/expr/global/levels/pr
 
 **Impl:** argument indirection in `doWrite` (comma-split reparse) · `@` SET/KILL targets · `@` in `$D`/`$O` ref keys · undefined-parent (`$DATA` 10) is not a value.
 
-**Corpus:** 97/42/0 → 102/37/0 (J12b) → 111/28/0 (J13) → 119/20/0 (J14) → 125/14/0 (J15) → **132/7/0** (J16).
+**Corpus:** 97/42/0 → 102/37/0 (J12b) → 111/28/0 (J13) → 119/20/0 (J14) → 125/14/0 (J15) → 132/7/0 (J16) → **131/8/0** (J17) ✅ TARGET.
 
 Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 
@@ -121,11 +121,11 @@ Gate: C49, C69–C71, C81, C86–C87 MATCH. **All ✅.**
 
 **Impl:** `$NEXT`/`$N` (forward `$ORDER`) · `$ST`/`$STACK` direct-mode frame · `$TEXT` name-arg (no var lookup) · `SET $EXTRACT` writeback · bare `$Q` = `$QUIT`.
 
-### Wave J17 — ISO `=` flip (1) · jvmumps#12
+### Wave J17 — ISO `=` flip ✅ · jvmumps#12
 
 | Case | Today | Target |
 |------|-------|--------|
-| C24.eq-noncanonical | MATCHES RSM (`0 0 0`) | DIVERGE like Py (`1 1 1`) — ISO numeric `=` |
+| C24.eq-noncanonical | ✅ DIVERGE `1 1 1` — ISO numeric `=` |
 
 After J17 the miss set must be **exactly**:
 `T12.ELSE-binding · T12b.ELSE-chain · T11.empty-vs-zero · T11b.zero-vs-empty · T11d.cmp-operators · T15.tlevel · C16.str-compare · C24.eq-noncanonical`
@@ -193,6 +193,7 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 | J14 traps + `$Z*` | ✅ 119/20/0 | jvmumps#9 |
 | J15 WRITE + `$X$Y` | ✅ 125/14/0 | jvmumps#10 |
 | J16 FOR/`$STACK`/SET `$E` | ✅ 132/7/0 | jvmumps#11 |
+| J17 ISO `=` flip | ✅ **131/8/0** | jvmumps#12 |
 | J17 ISO `=` flip | jvmumps#12 |
 | M10 commands | jvmumps#13 |
 | M11 calls/intrinsics | jvmumps#14 |

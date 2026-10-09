@@ -1311,15 +1311,13 @@ public final class ExprEval {
     static MValue compare(String op, MValue a, MValue b) {
         boolean res;
         if (op.equals("=")) {
-            if (a.isnum && b.isnum) {
-                res = a.num == b.num;
-            } else if (a.isnum != b.isnum) {
-                // Mixed: equal only if string is the canonical form of the number (C24)
-                MValue sn = a.isnum ? b : a;
-                MValue nv = a.isnum ? a : b;
-                res = sn.str.equals(mstr(nv.num));
+            // ISO: both numeric → numeric compare; else string. (J17 / C24)
+            boolean an = a.isnum || numericStr(a.str);
+            boolean bn = b.isnum || numericStr(b.str);
+            if (an && bn) {
+                res = a.asNum() == b.asNum();
             } else {
-                res = a.str.equals(b.str);
+                res = a.asStr().equals(b.asStr());
             }
         } else if (op.equals("'=")) {
             return compare("=", a, b).str.equals("1")

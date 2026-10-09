@@ -22,8 +22,8 @@ public final class J2Smoke {
         chk("W " + q + "[" + q + "_1_" + q + "]" + q + ",!", "[1]\n");
         // C22
         chk("W -7#3,\" \",7#-3,\" \",-7#-3,!", "2 -2 -1\n");
-        // C24 noncanonical =
-        chk("W (\"1.0\"=1),\" \",(\"+1\"=1),!", "0 0\n");
+        // C24 ISO = : both numeric → numeric compare (J17; matches Py/C3)
+        chk("W (\"1.0\"=1),\" \",(\"+1\"=1),!", "1 1\n");
         // C13 IF
         m = new LineInterp();
         chk("S X=1 I X=1 W \"ok\",!", "ok\n");
