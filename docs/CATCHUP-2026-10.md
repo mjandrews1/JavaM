@@ -13,14 +13,14 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 | Stack | MATCH | MISS | ERR |
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
-| **JvMumps** | 102 | 37 | 0 | (was 97/42/0; +5 J12b) |
+| **JvMumps** | 111 | 28 | 0 | (was 97/42/0) |
 | **mJVM** | 8 | 3 | 128 |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
 
 ---
 
-## Part 1 — JvMumps (97/42/0 → 131/8/0)
+## Part 1 — JvMumps (111/28/0 → 131/8/0)
 
 7 of 8 upstream-bug cases already diverge ISO-correctly (T11/T12/T15/C16). Remaining work = **35 real gaps** + **1 ISO flip** (`C24.eq-noncanonical`).
 
@@ -51,24 +51,25 @@ Also green: C61–C64, C68, C73, C76 (name/closed/computed/expr/global/levels/pr
 
 **Impl:** argument indirection in `doWrite` (comma-split reparse) · `@` SET/KILL targets · `@` in `$D`/`$O` ref keys · undefined-parent (`$DATA` 10) is not a value.
 
-**Corpus:** 97/42/0 → **102/37/0**.
+**Corpus:** 97/42/0 → 102/37/0 (J12b) → **111/28/0** (J13).
 
 Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 
-### Wave J13 — DO / GOTO / XECUTE / extrinsic (9) · jvmumps#8
+### Wave J13 — DO / GOTO / XECUTE / extrinsic ✅ · jvmumps#8
 
-| Case | Want |
-|------|------|
-| C94.do-tag | `DO TAG` argumentless with tag |
-| C95.goto-tag | `GOTO TAG` |
-| C97.xecute / C98.xecute-write | `XECUTE` string |
-| C99.do-args | `DO TAG(args)` formal args |
-| C100.do-postcond | postcondition on DO |
-| C101.goto-postcond | postcondition on GOTO |
-| C102.nested-do | nested DO stack |
-| C106.extrinsic-same | `$$fn` extrinsic + same-name local |
+| Case | Want | Status |
+|------|------|--------|
+| C94.do-tag | `DO TAG` | ✅ |
+| C95.goto-tag | `GOTO TAG` | ✅ |
+| C97.xecute / C98.xecute-write | `XECUTE` string | ✅ |
+| C99.do-args | `DO TAG(args)` formal args | ✅ |
+| C100.do-postcond | postcondition on DO | ✅ |
+| C101.goto-postcond | postcondition on GOTO | ✅ |
+| C102.nested-do | nested DO stack | ✅ |
+| C106.extrinsic-same | `$$fn` extrinsic + same-name local | ✅ |
 
-Gate: C94–C106 MATCH.
+**Impl:** tagged-routine loader · DO stack with mid-line resume · GOTO · XECUTE · `$$tag` extrinsics · `readExpr` stops at caller's `)`.
+External-routine cases (C103–C105, C107, `^SUB`) still open — need `routines` in CorpusCase.
 
 ### Wave J14 — Traps + `$Z*` specials (8) · jvmumps#9
 
@@ -166,7 +167,7 @@ Then full corpus + FileMan smoke.
 ```
   J12 symbols/literals/quotes  ✅  (J12SymLitSmoke in make smoke)
   J12b indirection             ✅  (C65–C75 + C61–C64/C68/C73/C76)
-  J13 DO/GOTO/XECUTE ──► J16 FOR/$STACK/SET $E
+  J13 DO/GOTO/XECUTE/$$        ✅  (C94–C102, C106)
   J14 traps/$Z*   ──► J15 WRITE/$X$Y
   J17 ISO = flip   (last JvMumps item; confirms miss-set identity)
   M10 commands    ──► M11 calls/intrinsics ──► M12 numerics + gate
@@ -180,7 +181,7 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 |------|-------|
 | J12 symbols/literals/quoted strings | ✅ smoke | jvmumps#7 |
 | J12b indirection `@` | ✅ 102/37/0 | jvmumps#7 |
-| J13 DO/GOTO/XECUTE | jvmumps#8 |
+| J13 DO/GOTO/XECUTE/$$ | ✅ 111/28/0 | jvmumps#8 |
 | J14 traps + `$Z*` | jvmumps#9 |
 | J15 WRITE + `$X$Y` | jvmumps#10 |
 | J16 FOR/`$STACK`/SET `$E` | jvmumps#11 |

@@ -1,11 +1,16 @@
 package jvmumps;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * J2 interpreter — command-aware parsing (IF/FOR eat their argument lists).
- * Direct-mode one physical line at a time.
+ * Direct-mode one physical line at a time. J13: tagged routines, DO/GOTO/XECUTE,
+ * extrinsics {@code $$tag}.
  */
 public final class LineInterp {
     private final StoreApi store;
@@ -24,6 +29,41 @@ public final class LineInterp {
     /** Per-level undo stack (ISO: TROLLBACK undoes only the current transaction level). */
     private final java.util.List<java.util.List<Object[]>> txUndo = new ArrayList<>();
     private final java.util.Map<String, MValue> undoVals = new java.util.HashMap<>();
+
+    // ---- J13 routine state ----
+    static final class RtLine {
+        final String tag; // null = untitled
+        final List<String> formals; // null = none
+        final String body;
+
+        RtLine(String tag, List<String> formals, String body) {
+            this.tag = tag;
+            this.formals = formals;
+            this.body = body;
+        }
+    }
+
+    static final class Frame {
+        final int retLine;
+        final String retRest;
+        final boolean extrinsic;
+        final List<String> savedFormals;
+
+        Frame(int retLine, String retRest, boolean extrinsic, List<String> savedFormals) {
+            this.retLine = retLine;
+            this.retRest = retRest;
+            this.extrinsic = extrinsic;
+            this.savedFormals = savedFormals;
+        }
+    }
+
+    private List<RtLine> prog;
+    private int pc;
+    private String pendingRest;
+    private final Deque<Frame> doStack = new ArrayDeque<>();
+    private final Map<String, Integer> tags = new LinkedHashMap<>();
+    private MValue extrinsicValue = MValue.EMPTY;
+    private boolean routineMode = false;
 
     public LineInterp() {
         this(new MStore());
@@ -66,6 +106,11 @@ public final class LineInterp {
                 List<String> path = parseRef(key);
                 return store.order(path, path.get(0).startsWith("^"), dir);
             }
+
+            @Override
+            public MValue extrinsic(String name, List<MValue> args) {
+                return callExtrinsic(name, args);
+            }
         });
         // $X / $Y via names
     }
@@ -78,7 +123,11 @@ public final class LineInterp {
         eval.vx = vx;
         eval.vy = vy;
         try {
-            exec(line);
+            if (looksLikeRoutine(line)) {
+                runRoutine(line);
+            } else {
+                exec(line);
+            }
         } catch (MError e) {
             // RSM direct-mode: error text is the result (C02)
             return e.getMessage() + "\n";
@@ -160,6 +209,346 @@ public final class LineInterp {
                 }
             }
         }
+    }
+
+    // ---- J13 routines -------------------------------------------------
+
+    static boolean looksLikeRoutine(String code) {
+        if (code.indexOf('\n') < 0) {
+            return false;
+        }
+        for (String raw : code.split("\n", -1)) {
+            if (raw.isEmpty() || raw.startsWith(" ") || raw.startsWith(".") || raw.startsWith("\t")) {
+                continue;
+            }
+            int i = 0;
+            while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) {
+                i++;
+            }
+            if (i == 0) {
+                continue;
+            }
+            String name = raw.substring(0, i);
+            char nxt = i < raw.length() ? raw.charAt(i) : ' ';
+            boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
+            if (tagShape && !Cursor.isCmdWord(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static List<RtLine> parseRoutine(String code) {
+        List<RtLine> lines = new ArrayList<>();
+        for (String raw : code.split("\n", -1)) {
+            String tag = null;
+            List<String> formals = null;
+            String body = raw;
+            if (!raw.isEmpty() && !raw.startsWith(" ") && !raw.startsWith(".") && !raw.startsWith("\t")) {
+                int i = 0;
+                while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) {
+                    i++;
+                }
+                String name = i > 0 ? raw.substring(0, i) : "";
+                if (!name.isEmpty()) {
+                    char nxt = i < raw.length() ? raw.charAt(i) : ' ';
+                    boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
+                    if (tagShape && !Cursor.isCmdWord(name)) {
+                        tag = name;
+                        if (i < raw.length() && raw.charAt(i) == '(') {
+                            int j = raw.indexOf(')', i);
+                            if (j > i) {
+                                formals = new ArrayList<>();
+                                for (String f : raw.substring(i + 1, j).split(",")) {
+                                    String t = f.trim();
+                                    if (!t.isEmpty()) {
+                                        formals.add(t);
+                                    }
+                                }
+                                i = j + 1;
+                            }
+                        }
+                        while (i < raw.length() && raw.charAt(i) == ' ') {
+                            i++;
+                        }
+                        body = raw.substring(i);
+                    }
+                }
+            }
+            lines.add(new RtLine(tag, formals, body));
+        }
+        return lines;
+    }
+
+    void runRoutine(String code) {
+        prog = parseRoutine(code);
+        tags.clear();
+        for (int i = 0; i < prog.size(); i++) {
+            String t = prog.get(i).tag;
+            if (t != null) {
+                tags.putIfAbsent(t.toUpperCase(), i);
+            }
+        }
+        routineMode = true;
+        pc = 0;
+        pendingRest = null;
+        doStack.clear();
+        runLoop();
+        routineMode = false;
+        prog = null;
+    }
+
+    /** Run from pc until halt or end of program. DO/Q/GOTO steer pc. */
+    private void runLoop() {
+        while (pc < prog.size() && !quit) {
+            String body = pendingRest != null ? pendingRest : prog.get(pc).body;
+            boolean wasRest = pendingRest != null;
+            pendingRest = null;
+            int pcBefore = pc;
+            Cursor c = new Cursor(body);
+            while (!c.atEnd() && !quit && pc == pcBefore && pendingRest == null) {
+                int before = c.i;
+                execOne(c);
+                if (c.i == before && !c.atEnd()) {
+                    c.next();
+                }
+            }
+            if (quit) {
+                return;
+            }
+            if (pendingRest != null) {
+                continue; // QUIT popped / DO redirected with rest
+            }
+            if (pc != pcBefore) {
+                continue; // GOTO / DO jumped
+            }
+            if (!wasRest) {
+                pc++;
+            } else {
+                // finished a resume-rest: continue with the next line after the DO line
+                pc++;
+            }
+        }
+    }
+
+    int findTag(String name) {
+        Integer ix = tags.get(name.toUpperCase());
+        return ix == null ? -1 : ix;
+    }
+
+    void bindFormals(RtLine line, List<MValue> args) {
+        if (line.formals == null) {
+            return;
+        }
+        for (int i = 0; i < line.formals.size(); i++) {
+            MValue v = i < args.size() ? args.get(i) : MValue.EMPTY;
+            eval.set(line.formals.get(i), v);
+        }
+    }
+
+    MValue callExtrinsic(String name, List<MValue> args) {
+        int target = findTag(name);
+        if (target < 0) {
+            throw new MError("No such label '" + name + "'");
+        }
+        int savePc = pc;
+        String saveRest = pendingRest;
+        boolean saveQuit = quit;
+        MValue saveVal = extrinsicValue;
+        List<String> savedFormals = null;
+        RtLine tl = prog.get(target);
+        if (tl.formals != null) {
+            savedFormals = new ArrayList<>(tl.formals);
+        }
+        pendingRest = null;
+        quit = false;
+        extrinsicValue = MValue.EMPTY;
+        bindFormals(tl, args);
+        int stackBase = doStack.size();
+        doStack.push(new Frame(savePc, saveRest, true, savedFormals));
+        pc = target;
+        runLoop();
+        // unwind if the target forgot QUIT
+        while (doStack.size() > stackBase) {
+            Frame f = doStack.pop();
+            if (f.extrinsic) {
+                break;
+            }
+        }
+        MValue v = extrinsicValue;
+        extrinsicValue = saveVal;
+        pc = savePc;
+        pendingRest = saveRest;
+        quit = saveQuit;
+        return v;
+    }
+
+    private void doDo(Cursor c) {
+        c.skipWs();
+        if (c.atEnd() || c.peek() == ',' || c.startsCommand()) {
+            // argumentless DO: run following dotted block if any — J13 treats as no-op
+            return;
+        }
+        boolean extrinsic = false;
+        String target = null;
+        if (c.peek() == '$' && c.i + 1 < c.s.length() && c.s.charAt(c.i + 1) == '$') {
+            // DO $$tag — extrinsic style call
+            extrinsic = true;
+            c.next();
+            c.next();
+            target = readTagName(c);
+        } else {
+            target = readTagName(c);
+            if (target.startsWith("^")) {
+                // external routine DO ^RTN — not in J13 same-routine set
+                return;
+            }
+        }
+        List<MValue> args = new ArrayList<>();
+        if (c.peek() == '(') {
+            c.next();
+            args = evalArgs(c);
+            if (c.peek() == ')') {
+                c.next();
+            }
+        }
+        int ix = findTag(target);
+        if (ix < 0) {
+            throw new MError("No such label '" + target + "'");
+        }
+        int retLine = pc;
+        String retRest = c.s.substring(c.i);
+        List<String> savedFormals = null;
+        RtLine tl = prog.get(ix);
+        if (tl.formals != null) {
+            savedFormals = new ArrayList<>(tl.formals);
+        }
+        doStack.push(new Frame(retLine, retRest, extrinsic, savedFormals));
+        bindFormals(tl, args);
+        pc = ix;
+        pendingRest = null;
+    }
+
+    private void doGoto(Cursor c) {
+        c.skipWs();
+        String target = readTagName(c);
+        if (target.isEmpty() || target.startsWith("^")) {
+            return;
+        }
+        int ix = findTag(target);
+        if (ix < 0) {
+            throw new MError("No such label '" + target + "'");
+        }
+        pc = ix;
+        pendingRest = null;
+        c.skipToEnd();
+    }
+
+    private void doXecute(Cursor c) {
+        // X expr[,expr…] — each string runs as commands in this context
+        while (!c.atEnd()) {
+            c.skipWs();
+            if (c.atEnd() || c.startsCommand()) {
+                break;
+            }
+            String ex = c.readExpr();
+            if (ex.isEmpty()) {
+                break;
+            }
+            MValue v = eval.eval(ex);
+            String body = v.asStr();
+            if (!body.isEmpty()) {
+                // run as commands (may contain DO/GOTO/XECUTE)
+                Cursor xc = new Cursor(body);
+                while (!xc.atEnd() && !quit) {
+                    int before = xc.i;
+                    execOne(xc);
+                    if (xc.i == before && !xc.atEnd()) {
+                        xc.next();
+                    }
+                }
+            }
+            c.skipWs();
+            if (c.peek() == ',') {
+                c.next();
+                continue;
+            }
+            break;
+        }
+    }
+
+    private String readTagName(Cursor c) {
+        c.skipWs();
+        int st = c.i;
+        if (c.peek() == '^') {
+            c.next();
+            while (c.i < c.s.length() && (Character.isLetterOrDigit(c.s.charAt(c.i)) || c.s.charAt(c.i) == '%')) {
+                c.next();
+            }
+            return c.s.substring(st, c.i);
+        }
+        while (c.i < c.s.length() && (Character.isLetterOrDigit(c.s.charAt(c.i)) || c.s.charAt(c.i) == '%')) {
+            c.next();
+        }
+        return c.s.substring(st, c.i);
+    }
+
+    private List<MValue> evalArgs(Cursor c) {
+        List<MValue> args = new ArrayList<>();
+        if (c.peek() == ')') {
+            return args;
+        }
+        while (!c.atEnd()) {
+            String ex = c.readExpr();
+            args.add(eval.eval(ex));
+            c.skipWs();
+            if (c.peek() == ',') {
+                c.next();
+                continue;
+            }
+            break;
+        }
+        return args;
+    }
+
+    private void doQuit() {
+        if (!routineMode || doStack.isEmpty()) {
+            quit = true;
+            return;
+        }
+        Frame f = doStack.pop();
+        if (f.savedFormals != null) {
+            for (String n : f.savedFormals) {
+                eval.set(n, MValue.EMPTY);
+            }
+        }
+        if (f.extrinsic) {
+            quit = true; // end callExtrinsic runLoop
+            return;
+        }
+        pc = f.retLine;
+        pendingRest = f.retRest == null ? "" : f.retRest;
+    }
+
+    private void doQuitExpr(String exprSrc) {
+        MValue v = eval.eval(exprSrc);
+        extrinsicValue = v;
+        if (!routineMode || doStack.isEmpty()) {
+            quit = true;
+            return;
+        }
+        Frame f = doStack.pop();
+        if (f.savedFormals != null) {
+            for (String n : f.savedFormals) {
+                eval.set(n, MValue.EMPTY);
+            }
+        }
+        if (f.extrinsic) {
+            quit = true;
+            return;
+        }
+        pc = f.retLine;
+        pendingRest = f.retRest == null ? "" : f.retRest;
     }
 
     private void execOne(Cursor c) {
@@ -264,11 +653,31 @@ public final class LineInterp {
             return;
         }
         if (up.startsWith("Q")) {
-            quit = true;
+            // QUIT [expr]
+            c.skipWs();
+            if (!c.atEnd() && !c.startsCommand()) {
+                String ex = c.readExpr();
+                if (!ex.isEmpty()) {
+                    doQuitExpr(ex);
+                    return;
+                }
+            }
+            doQuit();
             return;
         }
-        if (up.startsWith("H") || up.startsWith("G") || up.startsWith("D")
-                || up.startsWith("X") || up.startsWith("L") || up.startsWith("B")) {
+        if (up.equals("D") || up.equals("DO")) {
+            doDo(c);
+            return;
+        }
+        if (up.equals("G") || up.equals("GOTO")) {
+            doGoto(c);
+            return;
+        }
+        if (up.equals("X") || up.equals("XECUTE")) {
+            doXecute(c);
+            return;
+        }
+        if (up.startsWith("H") || up.startsWith("L") || up.startsWith("B")) {
             c.skipCmd();
             return;
         }
@@ -1010,6 +1419,9 @@ public final class LineInterp {
                     continue;
                 }
                 if (c == ')') {
+                    if (depth == 0) {
+                        break; // caller's closer (arg lists)
+                    }
                     depth--;
                     i++;
                     continue;

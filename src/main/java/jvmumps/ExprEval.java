@@ -44,10 +44,20 @@ public final class ExprEval {
         default String order(String key, double dir) {
             return "";
         }
+
+        /** J13: $$tag(args) extrinsic — run a routine tag, return QUIT expr. */
+        default MValue extrinsic(String name, List<MValue> args) {
+            throw new MError("Extrinsic $$" + name + " not available");
+        }
     }
 
     public ExprEval(Env env) {
         this.env = env;
+    }
+
+    /** J13: bind a formal / set via the environment. */
+    public void set(String name, MValue v) {
+        env.set(name, v);
     }
 
     /** Last resolved reference name (for $D). */
@@ -327,6 +337,16 @@ public final class ExprEval {
                 i = j;
                 continue;
             }
+            if (c == '$' && i + 1 < s.length() && s.charAt(i + 1) == '$') {
+                // $$extrinsic
+                int j = i + 2;
+                while (j < s.length() && (Character.isLetterOrDigit(s.charAt(j)) || s.charAt(j) == '%')) {
+                    j++;
+                }
+                out.add(new Tok(Kind.NAME, s.substring(i, j)));
+                i = j;
+                continue;
+            }
             if (c == '$' || c == '%') {
                 // $fn / $H etc. — keep as NAME token for later intrinsic layer
                 int j = i + 1;
@@ -572,6 +592,18 @@ public final class ExprEval {
             }
             if (t.kind == Kind.NAME || t.kind == Kind.GLOBAL) {
                 i++;
+                if (t.text.startsWith("$$")) {
+                    // J13 extrinsic $$tag(args)
+                    List<MValue> args = new ArrayList<>();
+                    if (peek().kind == Kind.LP) {
+                        i++;
+                        args = argList();
+                        if (peek().kind == Kind.RP) {
+                            i++;
+                        }
+                    }
+                    return env.extrinsic(t.text.substring(2), args);
+                }
                 if (t.text.startsWith("$")) {
                     String un = t.text.toUpperCase();
                     if (un.equals("$X")) return MValue.ofNumber(vx);
