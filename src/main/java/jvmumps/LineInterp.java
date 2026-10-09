@@ -36,7 +36,8 @@ public final class LineInterp {
             public MValue get(String name) {
                 List<String> path = parseRef(name);
                 boolean glob = path.get(0).startsWith("^");
-                if (!glob && store.data(path, false) == 0) {
+                if (!glob && store.data(path, false) % 2 == 0) {
+                    // 0 = never set; 10 = descendants only — both undefined as values
                     throw new MError("Undefined local variable");
                 }
                 return store.get(path, glob);
@@ -274,6 +275,82 @@ public final class LineInterp {
         c.skipCmd();
     }
 
+    /** J12b: true if @expr is a whole write-arg (next is ,!#?/end/cmd), not @x+1. */
+    private boolean argIndirection(Cursor c) {
+        int save = c.i;
+        c.next(); // @
+        try {
+            readIndOperand(c);
+            c.skipWs();
+            if (c.atEnd()) return true;
+            char p = c.peek();
+            return p == ',' || p == '!' || p == '#' || p == '?' || c.startsCommand();
+        } finally {
+            c.i = save;
+        }
+    }
+
+    /** Operand of @: parenthesized expr or name[+subs] (stops before operators). */
+    private String readIndOperand(Cursor c) {
+        c.skipWs();
+        if (c.peek() == '(') {
+            return c.readExpr();
+        }
+        int st = c.i;
+        while (c.i < c.s.length()) {
+            char ch = c.s.charAt(c.i);
+            if (ch == ' ' || ch == ',' || ch == ')' || ch == '=' || ch == '!'
+                    || ch == '#' || ch == '?' || ch == '_'
+                    || ch == '+' || ch == '-' || ch == '*' || ch == '/'
+                    || ch == '<' || ch == '>' || ch == '[' || ch == ']' || ch == '&') {
+                break;
+            }
+            c.i++;
+        }
+        return c.s.substring(st, c.i).trim();
+    }
+
+    /** Split argument-indirection text on top-level commas (strings/parens aware). */
+    static List<String> splitTopCommas(String text) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        int depth = 0;
+        boolean inS = false;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (inS) {
+                sb.append(ch);
+                if (ch == '"') {
+                    inS = false;
+                }
+                continue;
+            }
+            if (ch == '"') {
+                inS = true;
+                sb.append(ch);
+                continue;
+            }
+            if (ch == '(') {
+                depth++;
+                sb.append(ch);
+                continue;
+            }
+            if (ch == ')') {
+                depth--;
+                sb.append(ch);
+                continue;
+            }
+            if (ch == ',' && depth == 0) {
+                parts.add(sb.toString().trim());
+                sb.setLength(0);
+                continue;
+            }
+            sb.append(ch);
+        }
+        parts.add(sb.toString().trim());
+        return parts;
+    }
+
     private void doWrite(Cursor c) {
         StringBuilder sb = new StringBuilder();
         while (!c.atEnd()) {
@@ -307,6 +384,21 @@ public final class LineInterp {
             if (c.startsCommand()) {
                 break;
             }
+            // J12b argument indirection: @expr as a whole write-arg reparses its
+            // string (commas → multiple args). Followed by an operator → name form.
+            if (c.peek() == '@' && argIndirection(c)) {
+                c.next(); // consume @
+                String text = eval.eval(readIndOperand(c)).asStr();
+                for (String part : splitTopCommas(text)) {
+                    MValue v = eval.eval(part);
+                    String s = v.isnum ? ExprEval.mstr(v.num) : v.str;
+                    sb.append(s);
+                    vx += s.length();
+                    eval.vx = vx;
+                    eval.vy = vy;
+                }
+                continue;
+            }
             MValue v = eval.eval(c.readExpr());
             String s = v.isnum ? ExprEval.mstr(v.num) : v.str;
             sb.append(s);
@@ -324,6 +416,10 @@ public final class LineInterp {
             c.skipWs();
             if (c.atEnd()) break;
             String lhs = c.readRefToken();
+            if (lhs.startsWith("@")) {
+                // J12b indirect SET target: S @W2=99 → S Y=99
+                lhs = eval.eval(lhs.substring(1)).asStr();
+            }
             c.skipWs();
             if (c.peek() != '=') {
                 c.skipCmd();
@@ -471,6 +567,10 @@ public final class LineInterp {
                 break;
             }
             String ref = c.readRefToken();
+            if (ref.startsWith("@")) {
+                // J12b indirect KILL: K @S2 → K A(1)
+                ref = eval.eval(ref.substring(1)).asStr();
+            }
             List<String> path = parseRef(ref);
             store.kill(path, path.get(0).startsWith("^"));
             c.skipWs();

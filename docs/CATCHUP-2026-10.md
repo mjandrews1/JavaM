@@ -13,7 +13,7 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 | Stack | MATCH | MISS | ERR |
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
-| **JvMumps** | 97 | 42 | 0 |
+| **JvMumps** | 102 | 37 | 0 | (was 97/42/0; +5 J12b) |
 | **mJVM** | 8 | 3 | 128 |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
@@ -37,17 +37,23 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 
 **Status:** suite green. Remaining symbol work is **indirection `@`** (below) and the parity clusters J13–J17.
 
-### Wave J12b — Indirection `@` (5) · jvmumps#7
+### Wave J12b — Indirection `@` ✅ · jvmumps#7
 
-| Case | Want |
-|------|------|
-| C65.ind-args | `@LIST` as WRITE arg-list |
-| C66.ind-set | `S @W2=99` set-through |
-| C67.ind-intrinsic | `$D(@IDX)` / `$O(@IDX)` |
-| C74.ind-parent-undef | `W @N` when parent undefined → error |
-| C75.ind-kill | `K @ref` |
+| Case | Want | Status |
+|------|------|--------|
+| C65.ind-args | `@LIST` as WRITE arg-list | ✅ |
+| C66.ind-set | `S @W2=99` set-through | ✅ |
+| C67.ind-intrinsic | `$D(@IDX)` / `$O(@IDX)` | ✅ |
+| C74.ind-parent-undef | `W @N` when parent undefined → error | ✅ |
+| C75.ind-kill | `K @ref` | ✅ |
 
-Gate: `java jvmumps.CorpusScore conformance.json 'C65'` … C75 all MATCH.
+Also green: C61–C64, C68, C73, C76 (name/closed/computed/expr/global/levels/prec).
+
+**Impl:** argument indirection in `doWrite` (comma-split reparse) · `@` SET/KILL targets · `@` in `$D`/`$O` ref keys · undefined-parent (`$DATA` 10) is not a value.
+
+**Corpus:** 97/42/0 → **102/37/0**.
+
+Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 
 ### Wave J13 — DO / GOTO / XECUTE / extrinsic (9) · jvmumps#8
 
@@ -159,7 +165,8 @@ Then full corpus + FileMan smoke.
 
 ```
   J12 symbols/literals/quotes  ✅  (J12SymLitSmoke in make smoke)
-  J12b indirection ──► J13 DO/GOTO/XECUTE ──► J16 FOR/$STACK/SET $E
+  J12b indirection             ✅  (C65–C75 + C61–C64/C68/C73/C76)
+  J13 DO/GOTO/XECUTE ──► J16 FOR/$STACK/SET $E
   J14 traps/$Z*   ──► J15 WRITE/$X$Y
   J17 ISO = flip   (last JvMumps item; confirms miss-set identity)
   M10 commands    ──► M11 calls/intrinsics ──► M12 numerics + gate
@@ -172,7 +179,7 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 | Wave | Issue |
 |------|-------|
 | J12 symbols/literals/quoted strings | ✅ smoke | jvmumps#7 |
-| J12b indirection `@` | jvmumps#7 |
+| J12b indirection `@` | ✅ 102/37/0 | jvmumps#7 |
 | J13 DO/GOTO/XECUTE | jvmumps#8 |
 | J14 traps + `$Z*` | jvmumps#9 |
 | J15 WRITE + `$X$Y` | jvmumps#10 |

@@ -719,9 +719,14 @@ public final class ExprEval {
             return args;
         }
 
-        /** Consume a ref name[+subs] without evaluating it. */
+        /** Consume a ref name[+subs] without evaluating it. @ → J12b indirection. */
         String readRefKey() {
             Tok t = peek();
+            if (t.kind == Kind.OP && t.text.equals("@")) {
+                i++;
+                MValue ind = expr();
+                return ind.asStr();
+            }
             if (t.kind != Kind.NAME && t.kind != Kind.GLOBAL) {
                 return "";
             }
