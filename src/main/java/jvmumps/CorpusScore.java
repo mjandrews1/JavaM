@@ -32,12 +32,11 @@ public final class CorpusScore {
                 match++;
             } else {
                 miss++;
-                if (miss <= 15) {
-                    System.out.println("MISS " + c.name);
-                    System.out.println("  code " + c.code.replace('\n', ' '));
-                    System.out.println("  got  " + q(got));
-                    System.out.println("  want " + q(c.expected));
-                }
+                // print every miss — the old cap hid 27 of 42 gaps
+                System.out.println("MISS " + c.name);
+                System.out.println("  code " + c.code.replace('\n', ' '));
+                System.out.println("  got  " + q(got));
+                System.out.println("  want " + q(c.expected));
             }
         }
         System.out.printf("J2 CORPUS %s MATCH=%d MISS=%d ERR=%d%n", prefix, match, miss, err);
