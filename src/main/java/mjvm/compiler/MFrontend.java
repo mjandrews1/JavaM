@@ -77,6 +77,30 @@ public final class MFrontend {
                     || cmd.equals("G") || cmd.equals("GOTO")) {
                 if (activeLabels != null) {
                     boolean isG = cmd.equals("G") || cmd.equals("GOTO");
+                    // postcond D:0 FOO / G:1 BAR — run only if cond
+                    if (i < line.length() && line.charAt(i) == ':') {
+                        i++;
+                        int cs = i;
+                        i = scanExprEnd(line, i, " ");
+                        String cond = line.substring(cs, i).trim();
+                        out.add(Ir.evalExpr(cond));
+                        int j0 = out.size();
+                        out.add(Ir.jmp0(-1)); // false → skip call
+                        List<Ir> body = new ArrayList<>();
+                        List<int[]> bodyPk = new ArrayList<>();
+                        activeGoto = isG;
+                        i = compileDoGotoRet(line, i, body, bodyPk, activeLabels, activeSelfLine, isG);
+                        activeGoto = false;
+                        int base = out.size();
+                        out.addAll(body);
+                        for (int[] pk : bodyPk) {
+                            pk[1] += base;
+                            activePatches.add(pk);
+                        }
+                        out.set(j0, Ir.jmp0(out.size()));
+                        if (isG) i = line.length();
+                        continue;
+                    }
                     activeGoto = isG;
                     i = compileDoGotoRet(line, i, out, activePatches, activeLabels, activeSelfLine, isG);
                     activeGoto = false;
@@ -271,6 +295,30 @@ public final class MFrontend {
             bodies.add(body);
             if (tag != null) labels.putIfAbsent(tag.toUpperCase(), tags.size() - 1);
         }
+        // Argumentless DO + dotted block: D\n . cmd  →  D ZDn  +  tag ZDn
+        for (int i = 0; i < bodies.size(); i++) {
+            String b = bodies.get(i).trim();
+            if (!(b.equals("D") || b.equals("DO"))) continue;
+            int j = i + 1;
+            StringBuilder blk = new StringBuilder();
+            List<Integer> dots = new ArrayList<>();
+            while (j < bodies.size() && bodies.get(j).trim().startsWith(".")) {
+                String d = bodies.get(j).trim().substring(1);
+                if (d.startsWith(" ")) d = d.substring(1);
+                if (blk.length() > 0) blk.append(' ');
+                blk.append(d);
+                dots.add(j);
+                j++;
+            }
+            if (blk.length() > 0) {
+                String syn = "ZD" + i;
+                tags.add(syn);
+                bodies.add(blk.toString());
+                labels.put(syn, tags.size() - 1);
+                bodies.set(i, "D " + syn);
+                for (int k : dots) bodies.set(k, "");
+            }
+        }
         List<List<Ir>> lines = new ArrayList<>();
         List<List<int[]>> patchesPer = new ArrayList<>();
         for (int li = 0; li < bodies.size(); li++) {
@@ -292,6 +340,22 @@ public final class MFrontend {
                 activeLabels = null;
                 activePatches = null;
             }
+            boolean syn = tag != null && tag.startsWith("ZD");
+            if (!syn) {
+                boolean laterOrig = false;
+                for (int lj = li + 1; lj < tags.size(); lj++) {
+                    String tg = tags.get(lj);
+                    if (tg == null || !tg.startsWith("ZD")) { laterOrig = true; break; }
+                }
+                boolean hasSyn = false;
+                for (String tg : tags) if (tg != null && tg.startsWith("ZD")) hasSyn = true;
+                if (hasSyn && !laterOrig && !out.isEmpty()
+                        && out.get(out.size()-1).op != Ir.RET
+                        && out.get(out.size()-1).op != Ir.RET_TO
+                        && out.get(out.size()-1).op != Ir.JMP) {
+                    out.add(Ir.ret());
+                }
+            }
             if (tag != null && formalsOf.containsKey(tag.toUpperCase())) {
                 List<Ir> bound = new ArrayList<>();
                 String[] fs = formalsOf.get(tag.toUpperCase()).split(",");
@@ -310,10 +374,24 @@ public final class MFrontend {
         }
         List<Ir> prog = new ArrayList<>();
         int[] base = new int[lines.size()];
+        int[] localLen = new int[lines.size()];
         for (int li = 0; li < lines.size(); li++) {
             base[li] = prog.size();
+            localLen[li] = lines.get(li).size();
             prog.addAll(lines.get(li));
         }
+        // Rewrite JMP/JMP0 local indices to absolute (IF/ELSE within a line)
+        for (int li = 0; li < lines.size(); li++) {
+            int b = base[li];
+            int n = localLen[li];
+            for (int k = 0; k < n; k++) {
+                Ir ir = prog.get(b + k);
+                if ((ir.op == Ir.JMP || ir.op == Ir.JMP0) && ir.iarg >= 0 && ir.iarg <= n) {
+                    prog.set(b + k, new Ir(ir.op, ir.name, ir.ival, ir.dval, b + ir.iarg));
+                }
+            }
+        }
+        // Then DO/GOTO patches (absolute, overwrite)
         for (int li = 0; li < lines.size(); li++) {
             for (int[] pk : patchesPer.get(li)) {
                 int abs = base[pk[2]];

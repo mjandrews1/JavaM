@@ -289,17 +289,9 @@ public final class MRuntime {
         throw new jvmumps.MError("mJVM: no resolver for " + name);
     }
 
-    /** Truthiness: numeric ≠ 0, or non-empty non-"0" string (JvMumps contract). */
+    /** Truthiness: ISO / ExprEval contract (shared with JvMumps). */
     public static boolean truthy(MValue v) {
-        if (v == null) return false;
-        if (v.isnum) return v.asNum() != 0;
-        String s = v.asStr();
-        if (s.isEmpty()) return false;
-        try {
-            return Double.parseDouble(s) != 0;
-        } catch (NumberFormatException e) {
-            return true;
-        }
+        return v != null && jvmumps.ExprEval.truthy(v);
     }
 
     /** ISO = : both numeric → numeric; else string (J17 contract). */
