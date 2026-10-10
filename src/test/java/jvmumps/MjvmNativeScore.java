@@ -46,6 +46,14 @@ public final class MjvmNativeScore {
                 else {
                     miss++;
                 }
+            } catch (jvmumps.MError e) {
+                // Direct-mode convention: error text is output
+                String got = e.getMessage() + "\n";
+                String want = c.expected == null ? "" : c.expected;
+                while (got.endsWith("\n")) got = got.substring(0, got.length() - 1);
+                while (want.endsWith("\n")) want = want.substring(0, want.length() - 1);
+                if (got.equals(want)) match++;
+                else miss++;
             } catch (RuntimeException e) {
                 err++;
             }
