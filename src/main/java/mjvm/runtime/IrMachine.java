@@ -24,8 +24,19 @@ public final class IrMachine {
                     if (op.iarg == 1) vals[sp++] = MValue.ofNumber(op.dval);
                     else vals[sp++] = MValue.ofString(op.ival == null ? "" : op.ival);
                 }
-                case Ir.LOAD -> vals[sp++] = rt.getVar(op.name);
-                case Ir.STORE -> rt.setVar(op.name, vals[--sp]);
+                case Ir.LOAD -> {
+                    try {
+                        vals[sp++] = rt.getVar(op.name);
+                    } catch (jvmumps.MError e) {
+                        rt.fireTrap();
+                        vals[sp++] = jvmumps.MValue.EMPTY;
+                    }
+                }
+                case Ir.STORE -> {
+                    MValue v = vals[--sp];
+                    if (op.name != null && op.name.startsWith("$")) rt.setSpecial(op.name, v);
+                    else rt.setVar(op.name, v);
+                }
                 case Ir.ADD, Ir.SUB, Ir.MUL, Ir.DIV, Ir.CONCAT, Ir.MOD -> {
                     MValue b = vals[--sp];
                     MValue a = vals[--sp];
@@ -58,6 +69,14 @@ public final class IrMachine {
                 }
                 case Ir.WRITE -> rt.write(toText(vals[--sp]));
                 case Ir.WRITE_NL -> rt.writeNl();
+                case Ir.WRITE_CHAR -> {
+                    MValue v = vals[--sp];
+                    rt.writeChar((int) v.asNum());
+                }
+                case Ir.WRITE_COL -> {
+                    MValue v = vals[--sp];
+                    rt.writeCol((int) v.asNum());
+                }
                 case Ir.JMP -> pc = op.iarg;
                 case Ir.JMP0 -> {
                     MValue v = vals[--sp];
@@ -101,6 +120,7 @@ public final class IrMachine {
                 case Ir.NEW -> rt.newVar(op.name);
                 case Ir.KILL -> rt.killVar(op.name);
                 case Ir.MERGE -> rt.mergeVar(op.name, op.ival);
+                case Ir.EVAL_EXPR -> vals[sp++] = rt.evalExpr(op.ival);
                 case Ir.RET -> {
                     return;
                 }

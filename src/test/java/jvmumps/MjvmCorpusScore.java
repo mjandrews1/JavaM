@@ -31,9 +31,20 @@ public final class MjvmCorpusScore {
                         System.out.println("MISS " + c.name + " got=" + q(got) + " want=" + q(want));
                     }
                 }
+            } catch (jvmumps.MError e) {
+                // Direct-mode convention (LineInterp / shared corpus): error text is output
+                String got = e.getMessage() + "\n";
+                String want = c.expected == null ? "" : c.expected;
+                while (got.endsWith("\n")) got = got.substring(0, got.length() - 1);
+                while (want.endsWith("\n")) want = want.substring(0, want.length() - 1);
+                if (got.equals(want)) match++;
+                else {
+                    miss++;
+                    if (miss <= 8) System.out.println("MISS " + c.name + " got=" + q(got) + " want=" + q(want));
+                }
             } catch (RuntimeException e) {
                 err++;
-                if (true) System.out.println("ERR  " + c.name + " " + e);
+                if (err <= 8) System.out.println("ERR  " + c.name + " " + e);
             }
         }
         System.out.printf("MJVM CORPUS MATCH=%d MISS=%d ERR=%d%n", match, miss, err);

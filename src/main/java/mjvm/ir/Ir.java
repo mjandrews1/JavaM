@@ -20,6 +20,8 @@ public final class Ir {
     public static final int CONCAT = 14;
     public static final int WRITE = 20;     // WRITE top + optional NL
     public static final int WRITE_NL = 21;
+    public static final int WRITE_CHAR = 24;
+    public static final int WRITE_COL = 25;
     public static final int JMP = 30;
     public static final int JMP0 = 31;      // pop, jump if falsey
     public static final int CALL = 40;      // CALL name argc (M3 invokedynamic)
@@ -46,6 +48,7 @@ public final class Ir {
     public static final int NEW = 80;
     public static final int KILL = 81;
     public static final int MERGE = 82;
+    public static final int EVAL_EXPR = 83;
 
     public final int op;
     public final String name;   // var / label / write-tag
@@ -87,6 +90,14 @@ public final class Ir {
 
     public static Ir writeNl() {
         return new Ir(WRITE_NL, null, null, 0, 0);
+    }
+
+    public static Ir writeChar() {
+        return new Ir(WRITE_CHAR, null, null, 0, 0);
+    }
+
+    public static Ir writeCol() {
+        return new Ir(WRITE_COL, null, null, 0, 0);
     }
 
     public static Ir jmp(int target) {
@@ -152,6 +163,11 @@ public final class Ir {
     /** MERGE dst ← src (both name strings). */
     public static Ir mergeName(String dst, String src) {
         return new Ir(MERGE, dst, src, 0, 0);
+    }
+
+    /** Evaluate an M expression source via JvMumps ExprEval (M11 bridge). */
+    public static Ir evalExpr(String src) {
+        return new Ir(EVAL_EXPR, null, src, 0, 0);
     }
 
     public static List<Ir> program(Ir... ops) {

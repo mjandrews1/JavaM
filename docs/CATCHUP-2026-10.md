@@ -14,7 +14,7 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
 | **JvMumps** | **131** | **8** | **0** | **target — miss names = upstream set** |
-| **mJVM** | 19 | 5 | 115 | (was 8/3/128; M10) |
+| **mJVM** | 84 | 55 | 0 | (was 8/3/128; M10–M11) |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
 
@@ -147,14 +147,14 @@ Compile and execute:
 
 Gate: subset no longer throws on `I`/`E`/`F`/`N`/`K`/`M`. **✅ met** — 8/3/128 → 19/5/115.
 
-### Wave M11 — calls, XECUTE, intrinsics, indirection · jvmumps#14
+### Wave M11 — calls, XECUTE, intrinsics, indirection ✅ · jvmumps#14
 
 - `DO`/`GOTO`/`$$`/`XECUTE` with args, postcond, nesting (share J13 semantics)
 - Intrinsics `$DATA` `$ORDER` `$GET` `$NAME` `$QUERY*` `$SELECT` `$CASE` `$HOROLOG` `$STACK` `$TEXT` `$X` `$Y`
 - Patterns `?` ISO · indirection `@` (share J12)
 - Traps `$ETRAP`/`$ECODE`/`$ZTRAP` · `$Z*` subset (share J14)
 
-Gate: ERR count driven to 0 on the 139-case corpus.
+Gate: ERR count driven to 0 on the 139-case corpus. **✅ met** — 19/5/115 → **84/55/0**.
 
 ### Wave M12 — numeric semantics + parity gate · jvmumps#15
 

@@ -26,10 +26,78 @@ public final class MRuntime {
     private final java.util.Set<String> locks = new java.util.HashSet<>();
     private final java.util.List<java.util.List<Object[]>> txUndo = new ArrayList<>();
     private int tlevel = 0;
+    /** Shared JvMumps evaluator for $intrinsics / patterns / indirection (M11). */
+    private final jvmumps.ExprEval exprEval;
 
     public MRuntime(StoreApi store) {
         this.store = store;
+        this.exprEval = new jvmumps.ExprEval(new jvmumps.ExprEval.Env() {
+            @Override public jvmumps.MValue get(String name) {
+                return MRuntime.this.getVar(name);
+            }
+            @Override public void set(String name, jvmumps.MValue v) {
+                MRuntime.this.setVar(name, v);
+            }
+            @Override public int data(String name) {
+                try {
+                    jvmumps.MValue v = MRuntime.this.getVar(name);
+                    return v == jvmumps.MValue.EMPTY ? 0 : 1;
+                } catch (jvmumps.MError e) {
+                    return 0;
+                }
+            }
+        });
     }
+
+    /** M11: run a raw M expression through JvMumps ExprEval. */
+    public jvmumps.MValue evalExpr(String src) {
+        try {
+            return exprEval.eval(src == null ? "" : src);
+        } catch (jvmumps.MError e) {
+            if (trapFiring) throw e;
+            String trap = exprEval.etrap;
+            if (trap.isEmpty()) trap = exprEval.ztrap;
+            if (trap.isEmpty()) throw e;
+            trapFiring = true;
+            try {
+                exprEval.eval(trap);
+            } catch (RuntimeException ignored) {
+            } finally {
+                trapFiring = false;
+            }
+            return jvmumps.MValue.EMPTY;
+        }
+    }
+
+    private boolean trapFiring;
+
+    /** M11: run $ETRAP/$ZTRAP once for a command error. */
+    public void fireTrap() {
+        if (trapFiring) return;
+        String trap = exprEval.etrap;
+        if (trap.isEmpty()) trap = exprEval.ztrap;
+        if (trap.isEmpty()) return;
+        trapFiring = true;
+        try {
+            var prog = new mjvm.compiler.MFrontend().compileLine(trap);
+            mjvm.runtime.IrMachine.run(prog, this);
+        } catch (RuntimeException ignored) {
+        } finally {
+            trapFiring = false;
+        }
+    }
+
+    /** SET $ETRAP / $ECODE / $ZTRAP / $X / $Y. */
+    public void setSpecial(String name, jvmumps.MValue v) {
+        String u = name.toUpperCase();
+        switch (u) {
+            case "$ETRAP" -> exprEval.etrap = v.asStr();
+            case "$ECODE" -> exprEval.ecode = v.asStr();
+            case "$ZTRAP" -> exprEval.ztrap = v.asStr();
+            default -> { /* ignore other specials for now */ }
+        }
+    }
+
 
     public String output() {
         return out.toString();
@@ -47,6 +115,26 @@ public final class MRuntime {
             return;
         }
         out.append(s);
+    }
+
+    /** M11 WRITE *n */
+    public void writeChar(int code) {
+        if (code == 10) {
+            writeNl();
+            return;
+        }
+        char ch = (code >= 0 && code <= 255) ? (char) code : '?';
+        write(String.valueOf(ch));
+    }
+
+    /** M11 WRITE ?n — pad to column n (1-based). */
+    public void writeCol(int n) {
+        String cur = out.toString();
+        int lastNl = cur.lastIndexOf('\n');
+        int col = cur.length() - lastNl - 1;
+        if (n > col) {
+            write(" ".repeat(n - col));
+        }
     }
 
     public void writeNl() {
