@@ -10,14 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: jvmumps
-
-      # Shared conformance corpus lives in pymumps (same contract as peer ports).
-      - uses: actions/checkout@v4
-        with:
-          repository: mjandrews1/pymumps
-          path: pymumps
 
       - uses: actions/setup-java@v4
         with:
@@ -25,21 +17,18 @@ jobs:
           java-version: "21"
 
       - name: Smoke suite
-        working-directory: jvmumps
         env:
-          CORPUS: ${{ github.workspace }}/pymumps/tests/conformance.json
+          CORPUS: ${{ github.workspace }}/tests/conformance.json
         run: make smoke
 
       - name: Corpus runner
-        working-directory: jvmumps
         env:
-          CORPUS: ${{ github.workspace }}/pymumps/tests/conformance.json
+          CORPUS: ${{ github.workspace }}/tests/conformance.json
         run: make run
 
       - name: Native mJVM score
-        working-directory: jvmumps
         env:
-          CORPUS: ${{ github.workspace }}/pymumps/tests/conformance.json
+          CORPUS: ${{ github.workspace }}/tests/conformance.json
         run: |
           java -cp "build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" \
             jvmumps.MjvmNativeScore "$CORPUS" | tee native-score.txt
@@ -47,6 +36,5 @@ jobs:
           grep -q 'ERR=0' native-score.txt
 
       - name: FmJv smoke
-        working-directory: jvmumps
         run: |
           java -cp "build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" jvmumps.FmJv
