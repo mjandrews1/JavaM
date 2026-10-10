@@ -1,0 +1,25 @@
+# Local compile products — rebuild as needed. Shipped corpus classes stay tracked.
+# Smoke / debug / bench harnesses (ad-hoc .class leftovers):
+build/jvmumps/*Smoke*.class
+build/jvmumps/*Smoke$*.class
+build/jvmumps/Dbg*.class
+build/jvmumps/Dbg*$*.class
+build/jvmumps/CorpusPat*.class
+build/jvmumps/FmJv.class
+build/jvmumps/MjvmNativeScore*.class
+build/jvmumps/MjvmSmoke*.class
+build/jvmumps/NativeDetail.class
+build/jvmumps/PSys.class
+build/jvmumps/PatG.class
+build/jvmumps/PatternMatch$*.class
+build/jvmumps/PatternMatchISODiff.class
+build/jvmumps/Sql*.class
+build/jvmumps/T3.class
+build/jvmumps/LineInterp$Frame.class
+build/jvmumps/LineInterp$RtLine.class
+build/mjvm/runtime/IrMachine$H.class
+build/mjvm/runtime/MRuntime$*.class
+
+# OS / editor
+.DS_Store
+*.dSYM/
