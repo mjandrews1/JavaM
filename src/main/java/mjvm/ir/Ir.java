@@ -51,6 +51,10 @@ public final class Ir {
     public static final int EVAL_EXPR = 83;
     public static final int SET_EXTRACT = 84;
     public static final int SET_PIECE = 85;
+    public static final int CALL_PC = 86;
+    public static final int RET_TO = 87;
+    public static final int END_WRITE = 26;
+    public static final int XECUTE = 88;
 
     public final int op;
     public final String name;   // var / label / write-tag
@@ -88,6 +92,20 @@ public final class Ir {
 
     public static Ir write() {
         return new Ir(WRITE, null, null, 0, 0);
+    }
+
+    /** End of a WRITE command: newline without resetting $X/$Y (C90). */
+    /** WRITE @ind — expand argument-indirection string and write pieces. */
+    public static Ir writeArgs() {
+        return new Ir(WRITE, "@ARGS", null, 0, 1);
+    }
+
+    public static Ir endWrite() {
+        return new Ir(END_WRITE, null, null, 0, 0);
+    }
+
+    public static Ir xecute() {
+        return new Ir(XECUTE, null, null, 0, 0);
     }
 
     public static Ir writeNl() {
@@ -178,6 +196,11 @@ public final class Ir {
     }
 
     /** SET $PIECE(ref,d,f[,t])=v — ival = "delim,from,to" */
+    /** M12: call target pc (native routine DO). */
+    public static Ir callPc(int target) {
+        return new Ir(CALL_PC, null, null, 0, target);
+    }
+
     public static Ir setPiece(String ref, String d, int from, int to) {
         return new Ir(SET_PIECE, ref, d + "\u0001" + from + "\u0001" + to, 0, 0);
     }

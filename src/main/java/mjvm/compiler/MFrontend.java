@@ -30,8 +30,8 @@ public final class MFrontend {
 
     private List<Ir> compile(String line, boolean terminate) {
         List<Ir> out = new ArrayList<>();
-        ifJmp0.clear();
-        endJmps.clear();
+        if (compileDepth == 0) { ifJmp0.clear(); endJmps.clear(); }
+        compileDepth++;
         int i = 0;
         int n = line.length();
         while (i < n) {
@@ -55,34 +55,34 @@ public final class MFrontend {
                 }
             }
             i = skipWs(line, i);
-            // M12 postcond  W:expr / S:expr — skip rest of line if false
-            if (i < line.length() && line.charAt(i) == ':') {
-                i++;
-                int cs = i;
-                i = scanExprEnd(line, i, " ");
-                String cond = line.substring(cs, i).trim();
-                out.add(Ir.evalExpr(cond));
-                int j0 = out.size();
-                out.add(Ir.jmp0(-1));
-                // rest of line is the guarded command(s) — compile into body and jump over if false
-                int restStart = i;
-                List<Ir> body = new ArrayList<>();
-                compileInto(line.substring(restStart), body);
-                out.add(Ir.jmp(out.size() + body.size() + 1));
-                out.addAll(body);
-                out.set(j0, Ir.jmp0(out.size()));
-                i = line.length();
-                continue;
-            }
             if (cmd.equals("S") || cmd.equals("SET")) {
                 i = compileSet(line, i, out);
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
                 i = compileWrite(line, i, out);
-            } else if (cmd.equals("Q") || cmd.equals("QUIT") || cmd.equals("H") || cmd.equals("HALT")) {
+            } else if (cmd.equals("Q") || cmd.equals("QUIT")) {
                 out.add(Ir.ret());
                 break;
+            } else if (cmd.equals("H") || cmd.equals("HALT") || cmd.equals("HANG")) {
+                while (i < line.length() && !isCmdStart(line, i)) i++;
+            } else if (cmd.equals("X") || cmd.equals("XECUTE")) {
+                i = skipWs(line, i);
+                int stx = i;
+                i = scanExprEnd(line, i, " ");
+                String arg = line.substring(stx, i).trim();
+                if (!arg.isEmpty()) {
+                    out.add(Ir.evalExpr(arg));
+                    out.add(Ir.xecute());
+                }
             } else if (cmd.equals("J") || cmd.equals("JOB") || cmd.equals("D") || cmd.equals("DO")
-                    || cmd.equals("G") || cmd.equals("GOTO") || cmd.equals("X") || cmd.equals("XECUTE")) {
+                    || cmd.equals("G") || cmd.equals("GOTO")) {
+                if (activeLabels != null) {
+                    boolean isG = cmd.equals("G") || cmd.equals("GOTO");
+                    activeGoto = isG;
+                    i = compileDoGotoRet(line, i, out, activePatches, activeLabels, activeSelfLine, isG);
+                    activeGoto = false;
+                    if (isG) i = line.length();
+                    continue;
+                }
                 // M3: DO/GOTO tag [^rtn] [ (args) ] — name is a call-site, not a load
                 i = skipWs(line, i);
                 int tst = i;
@@ -147,22 +147,46 @@ public final class MFrontend {
             } else if (cmd.equals("M") || cmd.equals("MERGE")) {
                 i = compileMerge(line, i, out);
             } else if (cmd.equals("L") || cmd.equals("LOCK")) {
-                i = skipWs(line, i);
-                int sign = 1;
-                if (i < line.length() && (line.charAt(i) == '+' || line.charAt(i) == '-')) {
-                    sign = line.charAt(i) == '+' ? 1 : -1;
-                    i++;
+                while (i < line.length()) {
+                    i = skipWs(line, i);
+                    if (i >= line.length() || isCmdStart(line, i)) break;
+                    int sign = 1;
+                    if (i < line.length() && (line.charAt(i) == '+' || line.charAt(i) == '-')) {
+                        sign = line.charAt(i) == '+' ? 1 : -1;
+                        i++;
+                    }
+                    int st3 = i;
+                    while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
+                            || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
+                    if (i < line.length() && line.charAt(i) == '(') {
+                        int depth = 0;
+                        while (i < line.length()) {
+                            char c = line.charAt(i++);
+                            if (c == '(') depth++;
+                            else if (c == ')') {
+                                depth--;
+                                if (depth == 0) break;
+                            }
+                        }
+                    }
+                    String key = line.substring(st3, i).trim();
+                    int colon = key.indexOf(':');
+                    if (colon > 0) key = key.substring(0, colon);
+                    if (!key.isEmpty()) {
+                        out.add(Ir.pushStr(key));
+                        out.add(Ir.lock(sign));
+                    }
+                    i = skipWs(line, i);
+                    if (i < line.length() && line.charAt(i) == ':') {
+                        while (i < line.length() && !isCmdStart(line, i) && line.charAt(i) != ',') i++;
+                    }
+                    i = skipWs(line, i);
+                    if (i < line.length() && line.charAt(i) == ',') {
+                        i++;
+                        continue;
+                    }
+                    break;
                 }
-                // lock name is a ref string, not a load of an undefined local
-                int st3 = i;
-                while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
-                        || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
-                String key = line.substring(st3, i);
-                if (key.isEmpty()) {
-                    throw new MError("LOCK requires a name");
-                }
-                out.add(Ir.pushStr(key));
-                out.add(Ir.lock(sign));
             } else if (cmd.equals("VIEW")) {
                 // M11: VIEW is implementation-defined (no-op) — skip args
                 while (i < line.length() && !isCmdStart(line, i)) i++;
@@ -181,18 +205,184 @@ public final class MFrontend {
                 // next command
             }
         }
-        if (terminate) {
+        {
             int end = out.size();
             while (!ifJmp0.isEmpty()) {
-                out.set(ifJmp0.pop(), Ir.jmp0(end));
+                int ix = ifJmp0.pop();
+                if (ix >= 0 && ix < end) out.set(ix, Ir.jmp0(end));
             }
             for (int idx : endJmps) {
-                out.set(idx, Ir.jmp(end));
+                if (idx >= 0 && idx < end) out.set(idx, Ir.jmp(end));
             }
             endJmps.clear();
+        }
+        if (terminate) {
             out.add(Ir.ret());
         }
+        compileDepth--;
         return out;
+    }
+
+
+    public List<Ir> compileProgram(String code) {
+        if (code.indexOf('\n') >= 0) {
+            return compileRoutine(code);
+        }
+        return compileLine(code);
+    }
+
+    private java.util.Map<String, Integer> activeLabels;
+    private java.util.List<int[]> activePatches;
+    private int activeSelfLine;
+    private boolean activeGoto;
+    private int compileDepth;
+
+    List<Ir> compileRoutine(String code) {
+        String[] raws = code.split("\n", -1);
+        List<String> bodies = new ArrayList<>();
+        List<String> tags = new ArrayList<>();
+        java.util.Map<String, Integer> labels = new java.util.LinkedHashMap<>();
+        java.util.Map<String, String> formalsOf = new java.util.LinkedHashMap<>();
+        for (String raw : raws) {
+            String tag = null;
+            String body = raw;
+            if (!raw.isEmpty() && !raw.startsWith(" ") && !raw.startsWith(".") && !raw.startsWith("\t")) {
+                int i = 0;
+                while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) i++;
+                String name = i > 0 ? raw.substring(0, i) : "";
+                if (!name.isEmpty()) {
+                    char nxt = i < raw.length() ? raw.charAt(i) : ' ';
+                    boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
+                    if (tagShape && !isKnownCmd(name)) {
+                        tag = name;
+                        if (i < raw.length() && raw.charAt(i) == '(') {
+                            int j = raw.indexOf(')', i);
+                            if (j > i) {
+                                formalsOf.putIfAbsent(tag.toUpperCase(), raw.substring(i + 1, j));
+                                i = j + 1;
+                            }
+                        }
+                        while (i < raw.length() && raw.charAt(i) == ' ') i++;
+                        body = raw.substring(i);
+                    }
+                }
+            }
+            tags.add(tag);
+            bodies.add(body);
+            if (tag != null) labels.putIfAbsent(tag.toUpperCase(), tags.size() - 1);
+        }
+        List<List<Ir>> lines = new ArrayList<>();
+        List<List<int[]>> patchesPer = new ArrayList<>();
+        for (int li = 0; li < bodies.size(); li++) {
+            List<Ir> out = new ArrayList<>();
+            List<int[]> patches = new ArrayList<>();
+            String tag = tags.get(li);
+            String body = bodies.get(li);
+            activeLabels = labels;
+            activePatches = patches;
+            activeSelfLine = li;
+            compileDepth++;
+            try {
+                compile(body, false, out);
+            } catch (MError e) {
+                out.clear();
+                out.add(Ir.ret());
+            } finally {
+                compileDepth--;
+                activeLabels = null;
+                activePatches = null;
+            }
+            if (tag != null && formalsOf.containsKey(tag.toUpperCase())) {
+                List<Ir> bound = new ArrayList<>();
+                String[] fs = formalsOf.get(tag.toUpperCase()).split(",");
+                for (int fi = fs.length - 1; fi >= 0; fi--) {
+                    String fn = fs[fi].trim();
+                    if (!fn.isEmpty()) bound.add(Ir.store(fn));
+                }
+                int shift = 0;
+                for (int fi = fs.length - 1; fi >= 0; fi--) if (!fs[fi].trim().isEmpty()) shift++;
+                bound.addAll(out);
+                out = bound;
+                for (int[] pk : patches) pk[1] += shift;
+            }
+            lines.add(out);
+            patchesPer.add(patches);
+        }
+        List<Ir> prog = new ArrayList<>();
+        int[] base = new int[lines.size()];
+        for (int li = 0; li < lines.size(); li++) {
+            base[li] = prog.size();
+            prog.addAll(lines.get(li));
+        }
+        for (int li = 0; li < lines.size(); li++) {
+            for (int[] pk : patchesPer.get(li)) {
+                int abs = base[pk[2]];
+                Ir oldIr = prog.get(base[li] + pk[1]);
+                if (oldIr.op == Ir.CALL_PC) prog.set(base[li] + pk[1], Ir.callPc(abs));
+                else if (oldIr.op == Ir.JMP) prog.set(base[li] + pk[1], Ir.jmp(abs));
+            }
+        }
+        if (prog.isEmpty() || (prog.get(prog.size()-1).op != Ir.RET && prog.get(prog.size()-1).op != Ir.RET_TO)) {
+            prog.add(Ir.ret());
+        }
+        return prog;
+    }
+
+    private void compile(String line, boolean terminate, List<Ir> sink) {
+        List<Ir> tmp = compile(line, terminate);
+        sink.addAll(tmp);
+    }
+
+    void compileDoGoto(String line, int i, List<Ir> out, List<int[]> patches,
+                       java.util.Map<String, Integer> labels, int selfLine) {
+        compileDoGotoRet(line, i, out, patches, labels, selfLine, false);
+    }
+
+    int compileDoGotoRet(String line, int i, List<Ir> out, List<int[]> patches,
+                       java.util.Map<String, Integer> labels, int selfLine, boolean isGoto) {
+        int startI = i;
+        i = skipWs(line, i);
+        if (i + 1 < line.length() && line.charAt(i) == '$' && line.charAt(i + 1) == '$') {
+            i += 2;
+            int tst = i;
+            while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
+            String fn = line.substring(tst, i);
+            List<Ir> args = new ArrayList<>();
+            if (i < line.length() && line.charAt(i) == '(') {
+                i++;
+                while (i < line.length() && line.charAt(i) != ')') {
+                    int vs = i;
+                    i = scanExprEnd(line, i, ",)");
+                    args.add(Ir.evalExpr(line.substring(vs, i).trim()));
+                    if (i < line.length() && line.charAt(i) == ',') i++;
+                }
+                if (i < line.length() && line.charAt(i) == ')') i++;
+            }
+            out.addAll(args);
+            out.add(new Ir(Ir.CALL, "$" + fn, null, 0, args.size()));
+            return i;
+        }
+        int tst = i;
+        while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
+        String target = line.substring(tst, i).toUpperCase();
+        List<Ir> argOps = new ArrayList<>();
+        if (i < line.length() && line.charAt(i) == '(') {
+            i++;
+            while (i < line.length() && line.charAt(i) != ')') {
+                int vs = i;
+                i = scanExprEnd(line, i, ",)");
+                argOps.add(Ir.evalExpr(line.substring(vs, i).trim()));
+                if (i < line.length() && line.charAt(i) == ',') i++;
+            }
+            if (i < line.length() && line.charAt(i) == ')') i++;
+        }
+        Integer tl = labels.get(target);
+        out.addAll(argOps);
+        if (tl != null) {
+            patches.add(new int[] {selfLine, out.size(), tl, argOps.size()});
+            out.add((isGoto || activeGoto) ? Ir.jmp(-1) : Ir.callPc(-1));
+        }
+        return i;
     }
 
     private int compileIf(String line, int i, List<Ir> out) {
@@ -315,6 +505,33 @@ public final class MFrontend {
         return line.length();
     }
 
+    private static List<String> splitArgsCommas(String spec) {
+        List<String> segs = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        int depth = 0;
+        boolean inS = false;
+        for (int k = 0; k < spec.length(); k++) {
+            char c = spec.charAt(k);
+            if (inS) {
+                sb.append(c);
+                if (c == '"') {
+                    if (k + 1 < spec.length() && spec.charAt(k + 1) == '"') {
+                        sb.append('"');
+                        k++;
+                    } else inS = false;
+                }
+                continue;
+            }
+            if (c == '"') { inS = true; sb.append(c); continue; }
+            if (c == '(') { depth++; sb.append(c); continue; }
+            if (c == ')') { depth--; sb.append(c); continue; }
+            if (c == ',' && depth == 0) { segs.add(sb.toString().trim()); sb.setLength(0); continue; }
+            sb.append(c);
+        }
+        segs.add(sb.toString().trim());
+        return segs;
+    }
+
     private static List<String> splitOnColons(String spec) {
         List<String> segs = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
@@ -365,8 +582,17 @@ public final class MFrontend {
     private int compileNameList(String line, int i, List<Ir> out, int kind) {
         while (i < line.length()) {
             i = skipWs(line, i);
-            if (i >= line.length() || isCmdStart(line, i)) break;
+            if (i >= line.length()) break;
             int st = i;
+            if (i < line.length() && line.charAt(i) == '@') {
+                int k = scanExprEnd(line, i + 1, " ,");
+                out.add(Ir.evalExpr(line.substring(i + 1, k).trim()));
+                out.add(new Ir(Ir.KILL, "@", null, 0, 0));
+                i = k;
+                i = skipWs(line, i);
+                if (i < line.length() && line.charAt(i) == ',') { i++; continue; }
+                break;
+            }
             while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
                     || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
             String name = line.substring(st, i);
@@ -396,10 +622,28 @@ public final class MFrontend {
 
     private int compileMerge(String line, int i, List<Ir> out) {
         i = skipWs(line, i);
+        int[] dp = new int[] {i};
+        String dst = readRefName(line, dp)[0];
+        i = dp[0];
+        i = skipWs(line, i);
+        if (i < line.length() && line.charAt(i) == '=') {
+            i++;
+            i = skipWs(line, i);
+            int[] sp = new int[] {i};
+            String src = readRefName(line, sp)[0];
+            i = sp[0];
+            out.add(Ir.mergeName(dst, src));
+        }
+        return i;
+    }
+
+    /** Read name[+subs] at pos[0]; returns {name, newPosAsString}. */
+    private static String[] readRefName(String line, int[] pos) {
+        int i = pos[0];
+        i = skipWs(line, i);
         int st = i;
         while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
                 || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
-        String dst = line.substring(st, i);
         if (i < line.length() && line.charAt(i) == '(') {
             int depth = 0;
             while (i < line.length()) {
@@ -411,17 +655,8 @@ public final class MFrontend {
                 }
             }
         }
-        i = skipWs(line, i);
-        if (i < line.length() && line.charAt(i) == '=') {
-            i++;
-            i = skipWs(line, i);
-            int st2 = i;
-            while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
-                    || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
-            String src = line.substring(st2, i);
-            out.add(Ir.mergeName(dst, src));
-        }
-        return i;
+        pos[0] = i;
+        return new String[] {line.substring(st, i), String.valueOf(i)};
     }
 
     private int compileSet(String line, int i, List<Ir> out) {
@@ -430,6 +665,23 @@ public final class MFrontend {
             i = skipWs(line, i);
             if (i >= line.length() || isCmdStart(line, i)) break;
             int st = i;
+            if (i < line.length() && line.charAt(i) == '@') {
+                int k = scanExprEnd(line, i + 1, " ,=");
+                String ind = line.substring(i + 1, k).trim();
+                i = skipWs(line, k);
+                if (i < line.length() && line.charAt(i) == '=') {
+                    i++;
+                    int vs = i;
+                    i = scanExprEnd(line, i, " ,");
+                    out.add(Ir.evalExpr(line.substring(vs, i).trim()));
+                    out.add(new Ir(Ir.STORE, "@" + ind, null, 0, 0));
+                }
+                if (i < line.length() && line.charAt(i) == ',') {
+                    i++;
+                    continue;
+                }
+                break;
+            }
             // target may be $E(…) $P(…) $ETRAP or a name/subscript ref
             if (i < line.length() && line.charAt(i) == '$') {
                 int k = i + 1;
@@ -456,7 +708,7 @@ public final class MFrontend {
                         int vs = k;
                         k = scanExprEnd(line, k, " ,");
                         String val = line.substring(vs, k).trim();
-                        String[] parts = inner.split(",");
+                        String[] parts = splitArgsCommas(inner).toArray(new String[0]);
                         String ref = parts[0].trim();
                         int from = 1;
                         int to = 1;
@@ -547,20 +799,34 @@ public final class MFrontend {
     }
 
     private int compileWrite(String line, int i, List<Ir> out) {
+        boolean pending = false;
+        if (i < line.length() && line.charAt(i) == ':') {
+            i++;
+            int cs = i;
+            i = scanExprEnd(line, i, " ");
+            String cond = line.substring(cs, i).trim();
+            out.add(Ir.evalExpr(cond));
+            int j0 = out.size();
+            out.add(Ir.jmp0(-1));
+            i = compileWrite(line, i, out);
+            out.set(j0, Ir.jmp0(out.size()));
+            return i;
+        }
         while (i < line.length()) {
             i = skipWs(line, i);
             if (i >= line.length()) break;
             char c = line.charAt(i);
             if (c == '!') {
                 out.add(Ir.writeNl());
+                pending = false;
                 i++;
                 i = skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
                 continue;
             }
             if (c == '#') {
-                // form feed → line break (corpus convention)
                 out.add(Ir.writeNl());
+                pending = false;
                 i++;
                 i = skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
@@ -570,11 +836,11 @@ public final class MFrontend {
                 i++;
                 int vs = i;
                 i = scanExprEnd(line, i, ", ");
-                String ex = line.substring(vs, i).trim();
                 List<Ir> tmp = new ArrayList<>();
-                compileExprSrc(ex, tmp);
+                compileExprSrc(line.substring(vs, i).trim(), tmp);
                 out.addAll(tmp);
                 out.add(Ir.writeChar());
+                pending = true;
                 i = skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
                 continue;
@@ -583,23 +849,30 @@ public final class MFrontend {
                 i++;
                 int vs = i;
                 i = scanExprEnd(line, i, ", ");
-                String ex = line.substring(vs, i).trim();
                 List<Ir> tmp = new ArrayList<>();
-                compileExprSrc(ex, tmp);
+                compileExprSrc(line.substring(vs, i).trim(), tmp);
                 out.addAll(tmp);
                 out.add(Ir.writeCol());
+                pending = true;
                 i = skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
                 continue;
             }
-            if (c == ',') {
-                i++;
+            if (isCmdStart(line, i)) break;
+            if (c == '@') {
+                int k = scanExprEnd(line, i + 1, " ,");
+                out.add(Ir.evalExpr(line.substring(i + 1, k).trim()));
+                out.add(Ir.writeArgs());
+                pending = true;
+                i = k;
+                i = skipWs(line, i);
+                if (i < line.length() && line.charAt(i) == ',') i++;
                 continue;
             }
-            if (isCmdStart(line, i)) break;
             int before = i;
             i = compileExpr(line, i, out, ",");
             out.add(Ir.write());
+            pending = true;
             if (i == before) {
                 throw new MError("WRITE could not parse at " + line.substring(i));
             }
@@ -610,10 +883,10 @@ public final class MFrontend {
             }
             if (isCmdStart(line, i)) break;
         }
+        if (pending) out.add(Ir.endWrite());
         return i;
     }
 
-    /** Compile one expression. terminator is a char that ends the expr (not consumed). */
     private int compileExpr(String line, int i, List<Ir> out, String term) {
         // M11: route expressions through JvMumps ExprEval (single semantics source)
         int j = scanExprEnd(line, i, term);
@@ -748,7 +1021,13 @@ public final class MFrontend {
         while (i < line.length()) {
             char c = line.charAt(i);
             if (inS) {
-                if (c == '"') inS = false;
+                if (c == '"') {
+                    if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                        i += 2;
+                        continue;
+                    }
+                    inS = false;
+                }
                 i++;
                 continue;
             }
@@ -766,8 +1045,7 @@ public final class MFrontend {
             }
             if (depth == 0 && term.indexOf(c) >= 0) break;
             // command start ends an expression in arg position
-            if (depth == 0 && c == ' ' && isCmdStart(line, i + 1 < line.length() ? i : i)) {
-                // look ahead: word after space is a command
+            if (depth == 0 && c == ' ') {
                 int k = i + 1;
                 while (k < line.length() && line.charAt(k) == ' ') k++;
                 if (isCmdStart(line, k)) break;
@@ -780,7 +1058,7 @@ public final class MFrontend {
     private static boolean isKnownCmd(String w) {
         String u = w.toUpperCase();
         return u.equals("S") || u.equals("SET") || u.equals("W") || u.equals("WRITE")
-                || u.equals("Q") || u.equals("QUIT") || u.equals("H") || u.equals("HALT")
+                || u.equals("Q") || u.equals("QUIT") || u.equals("H") || u.equals("HALT") || u.equals("HANG")
                 || u.equals("J") || u.equals("JOB") || u.equals("D") || u.equals("DO")
                 || u.equals("L") || u.equals("LOCK") || u.equals("O") || u.equals("OPEN")
                 || u.equals("C") || u.equals("CLOSE") || u.equals("U") || u.equals("USE")
@@ -814,6 +1092,10 @@ public final class MFrontend {
                 || w.equals("C") || w.equals("CLOSE") || w.equals("U") || w.equals("USE")
                 || w.equals("R") || w.equals("READ") || w.equals("G") || w.equals("GOTO")
                 || w.equals("TSTART") || w.equals("TCOMMIT") || w.equals("TROLLBACK")
-                || w.equals("X") || w.equals("XECUTE");
+                || w.equals("X") || w.equals("XECUTE")
+                || w.equals("I") || w.equals("IF") || w.equals("E") || w.equals("ELSE")
+                || w.equals("F") || w.equals("FOR") || w.equals("N") || w.equals("NEW")
+                || w.equals("K") || w.equals("KILL") || w.equals("M") || w.equals("MERGE")
+                || w.equals("HANG") || w.equals("VIEW");
     }
 }

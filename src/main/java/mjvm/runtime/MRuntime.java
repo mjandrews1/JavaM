@@ -44,6 +44,12 @@ public final class MRuntime {
             @Override public String order(String key, double dir) {
                 return MRuntime.this.order(key, dir);
             }
+            @Override public String query(String key, int dir) {
+                return MRuntime.this.query(key, dir);
+            }
+            @Override public jvmumps.MValue extrinsic(String name, java.util.List<jvmumps.MValue> args) {
+                return MRuntime.this.callExtrinsic(name, args.toArray(new jvmumps.MValue[0]));
+            }
         });
     }
 
@@ -58,7 +64,8 @@ public final class MRuntime {
             if (trap.isEmpty()) throw e;
             trapFiring = true;
             try {
-                exprEval.eval(trap);
+                var prog = new mjvm.compiler.MFrontend().compileLine(trap);
+                mjvm.runtime.IrMachine.run(prog, this);
             } catch (RuntimeException ignored) {
             } finally {
                 trapFiring = false;
@@ -92,6 +99,8 @@ public final class MRuntime {
             case "$ETRAP" -> exprEval.etrap = v.asStr();
             case "$ECODE" -> exprEval.ecode = v.asStr();
             case "$ZTRAP" -> exprEval.ztrap = v.asStr();
+            case "$X" -> exprEval.vx = (int) v.asNum();
+            case "$Y" -> exprEval.vy = (int) v.asNum();
             default -> { /* ignore other specials for now */ }
         }
     }
@@ -108,11 +117,13 @@ public final class MRuntime {
     }
 
     public void write(String s) {
+        if (out.length() > 2_000_000) throw new jvmumps.MError("output limit");
         if (io != 0) {
             writeToDevice(io, s);
             return;
         }
         out.append(s);
+        exprEval.vx += s.length();
     }
 
     /** M11 WRITE *n */
@@ -135,12 +146,23 @@ public final class MRuntime {
         }
     }
 
+    /** Trailing WRITE line-break: keep $X/$Y (C90). */
+    public void endWrite() {
+        if (io != 0) {
+            writeToDevice(io, "");
+            return;
+        }
+        out.append('\n');
+    }
+
     public void writeNl() {
         if (io != 0) {
             writeToDevice(io, "");
             return;
         }
         out.append('\n');
+        exprEval.vx = 0;
+        exprEval.vy++;
     }
 
     static List<String> pathOf(String name) {
@@ -242,6 +264,23 @@ public final class MRuntime {
         this.resolver = r;
     }
 
+    /** Extrinsic $$fn(args) — run via LineInterp-free: use stored program labels. */
+    public jvmumps.MValue callExtrinsic(String name, jvmumps.MValue[] argv) {
+        // delegate to MFrontend+IrMachine on a synthetic DO form if we have a routine
+        if (extrinsicHandler != null) return extrinsicHandler.call(name, argv);
+        throw new jvmumps.MError("Extrinsic $$" + name + " not available");
+    }
+
+    public interface ExtrinsicHandler {
+        jvmumps.MValue call(String name, jvmumps.MValue[] argv);
+    }
+
+    private ExtrinsicHandler extrinsicHandler;
+
+    public void setExtrinsicHandler(ExtrinsicHandler h) {
+        this.extrinsicHandler = h;
+    }
+
     public void call(String name, int argc) {
         if (resolver != null) {
             resolver.call(name, argc, this);
@@ -334,16 +373,20 @@ public final class MRuntime {
         setVar(ref, jvmumps.MValue.ofString(jvmumps.LineInterp.setPieceOf(cur, d, from, to, v)));
     }
 
-    /** MERGE dst ← src. */
+    /** MERGE dst ← src (tree). */
     public void mergeVar(String dst, String src) {
         if (dst == null || src == null) return;
-        MValue v;
-        try {
-            v = getVar(src);
-        } catch (jvmumps.MError e) {
-            v = MValue.EMPTY;
-        }
-        setVar(dst, v);
+        List<String> d = pathOf(dst);
+        List<String> s = pathOf(src);
+        boolean dg = d.get(0).startsWith("^");
+        boolean sg = s.get(0).startsWith("^");
+        store.merge(d, dg, s, sg);
+    }
+
+    /** $QUERY */
+    public String query(String key, int dir) {
+        List<String> path = key.isEmpty() ? List.of("") : pathOf(key);
+        return store.queryNext(path, !path.isEmpty() && path.get(0).startsWith("^"), dir);
     }
 
     // ---- M5 devices --------------------------------------------------

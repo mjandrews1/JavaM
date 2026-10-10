@@ -11,12 +11,52 @@ import mjvm.ir.Ir;
  * straight-line) and generated classes route through the same opcodes.
  */
 public final class IrMachine {
+    static final class H {
+        static java.util.List<String> splitTop(String text) {
+            java.util.List<String> parts = new java.util.ArrayList<>();
+            StringBuilder sb = new StringBuilder();
+            int depth = 0;
+            boolean inS = false;
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (inS) {
+                    sb.append(c);
+                    if (c == '"') inS = false;
+                    continue;
+                }
+                if (c == '"') {
+                    inS = true;
+                    sb.append(c);
+                    continue;
+                }
+                if (c == '(') {
+                    depth++;
+                    sb.append(c);
+                    continue;
+                }
+                if (c == ')') {
+                    depth--;
+                    sb.append(c);
+                    continue;
+                }
+                if (c == ',' && depth == 0) {
+                    parts.add(sb.toString().trim());
+                    sb.setLength(0);
+                    continue;
+                }
+                sb.append(c);
+            }
+            parts.add(sb.toString().trim());
+            return parts;
+        }
+    }
 
     public static void run(List<Ir> prog, MRuntime rt) {
         int[] stack = new int[0]; // unused — value stack below
         MValue[] vals = new MValue[256];
         int sp = 0;
         int pc = 0;
+        java.util.ArrayDeque<Integer> rets = new java.util.ArrayDeque<>();
         while (pc < prog.size() && !rt.isQuit()) {
             Ir op = prog.get(pc);
             switch (op.op) {
@@ -34,8 +74,14 @@ public final class IrMachine {
                 }
                 case Ir.STORE -> {
                     MValue v = vals[--sp];
-                    if (op.name != null && op.name.startsWith("$")) rt.setSpecial(op.name, v);
-                    else rt.setVar(op.name, v);
+                    if (op.name != null && op.name.startsWith("@")) {
+                        String target = rt.evalExpr(op.name.substring(1)).asStr();
+                        rt.setVar(target, v);
+                    } else if (op.name != null && op.name.startsWith("$")) {
+                        rt.setSpecial(op.name, v);
+                    } else {
+                        rt.setVar(op.name, v);
+                    }
                 }
                 case Ir.ADD, Ir.SUB, Ir.MUL, Ir.DIV, Ir.CONCAT, Ir.MOD -> {
                     MValue b = vals[--sp];
@@ -67,8 +113,25 @@ public final class IrMachine {
                     };
                     vals[sp++] = MValue.ofNumber(r ? 1 : 0);
                 }
-                case Ir.WRITE -> rt.write(toText(vals[--sp]));
+                case Ir.WRITE -> {
+                    MValue v = vals[--sp];
+                    if (op.iarg == 1) {
+                        // argument indirection: write comma-separated exprs
+                        String src = v.asStr();
+                        for (String part : H.splitTop(src)) {
+                            rt.write(toText(rt.evalExpr(part)));
+                        }
+                    } else {
+                        rt.write(toText(v));
+                    }
+                }
                 case Ir.WRITE_NL -> rt.writeNl();
+                case Ir.END_WRITE -> rt.endWrite();
+                case Ir.XECUTE -> {
+                    MValue v = vals[--sp];
+                    var p2 = new mjvm.compiler.MFrontend().compileLine(v.asStr());
+                    run(p2, rt);
+                }
                 case Ir.WRITE_CHAR -> {
                     MValue v = vals[--sp];
                     rt.writeChar((int) v.asNum());
@@ -86,7 +149,17 @@ public final class IrMachine {
                         pc++;
                     }
                 }
-                case Ir.CALL -> rt.call(op.name, op.iarg);
+                case Ir.CALL -> {
+                    if (op.name != null && op.name.startsWith("$")) {
+                        // extrinsic $$fn — pop argc args, run tag via nested program
+                        int argc = op.iarg;
+                        MValue[] argv = new MValue[argc];
+                        for (int k = argc - 1; k >= 0; k--) argv[k] = vals[--sp];
+                        vals[sp++] = rt.callExtrinsic(op.name.substring(1), argv);
+                    } else {
+                        rt.call(op.name, op.iarg);
+                    }
+                }
                 case Ir.OPEN -> {
                     // stack: path, device#  (device# pushed first)
                     MValue path = vals[--sp];
@@ -118,7 +191,14 @@ public final class IrMachine {
                 case Ir.TCOMMIT -> rt.tcommit();
                 case Ir.TROLLBACK -> rt.trollback();
                 case Ir.NEW -> rt.newVar(op.name);
-                case Ir.KILL -> rt.killVar(op.name);
+                case Ir.KILL -> {
+                    if ("@".equals(op.name)) {
+                        String target = vals[--sp].asStr();
+                        rt.killVar(target);
+                    } else {
+                        rt.killVar(op.name);
+                    }
+                }
                 case Ir.MERGE -> rt.mergeVar(op.name, op.ival);
                 case Ir.EVAL_EXPR -> vals[sp++] = rt.evalExpr(op.ival);
                 case Ir.SET_EXTRACT -> {
@@ -131,7 +211,21 @@ public final class IrMachine {
                     String[] parts = op.ival.split("\u0001", -1);
                     rt.setPiece(op.name, parts[0], Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), v.asStr());
                 }
+                case Ir.CALL_PC -> {
+                    rets.push(pc + 1);
+                    pc = op.iarg;
+                    continue;
+                }
+                case Ir.RET_TO -> {
+                    if (rets.isEmpty()) return;
+                    pc = rets.pop();
+                    continue;
+                }
                 case Ir.RET -> {
+                    if (!rets.isEmpty()) {
+                        pc = rets.pop();
+                        continue;
+                    }
                     return;
                 }
                 default -> throw new jvmumps.MError("bad IR op " + op.op);

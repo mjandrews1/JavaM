@@ -15,7 +15,28 @@ public final class MjvmNativeScore {
             if (!use) continue;
             try {
                 mjvm.runtime.MRuntime rt = new mjvm.runtime.MRuntime(new MStore());
-                var prog = new mjvm.compiler.MFrontend().compileLine(c.code);
+                rt.setExtrinsicHandler((fn, argv) -> {
+                    for (String raw : c.code.split("\n", -1)) {
+                        String s = raw.trim();
+                        int p = s.indexOf('(');
+                        if (p <= 0) continue;
+                        String nm = s.substring(0, p).trim();
+                        if (!nm.equalsIgnoreCase(fn)) continue;
+                        int q = s.indexOf(')', p);
+                        if (q < 0) continue;
+                        String[] fs = s.substring(p + 1, q).split(",");
+                        for (int k = 0; k < fs.length && k < argv.length; k++) {
+                            rt.setVar(fs[k].trim(), argv[k]);
+                        }
+                        String body = s.substring(q + 1).trim();
+                        if (body.startsWith("Q") || body.startsWith("QUIT")) {
+                            body = body.replaceFirst("^(QUIT|Q)\\s*", "");
+                        }
+                        return rt.evalExpr(body);
+                    }
+                    throw new jvmumps.MError("Extrinsic $$" + fn + " not available");
+                });
+                var prog = new mjvm.compiler.MFrontend().compileProgram(c.code);
                 mjvm.runtime.IrMachine.run(prog, rt);
                 String got = rt.output();
                 String want = c.expected == null ? "" : c.expected;
