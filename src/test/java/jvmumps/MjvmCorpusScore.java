@@ -33,7 +33,7 @@ public final class MjvmCorpusScore {
                 }
             } catch (RuntimeException e) {
                 err++;
-                if (err <= 5) System.out.println("ERR  " + c.name + " " + e);
+                if (true) System.out.println("ERR  " + c.name + " " + e);
             }
         }
         System.out.printf("MJVM CORPUS MATCH=%d MISS=%d ERR=%d%n", match, miss, err);

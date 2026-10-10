@@ -123,6 +123,50 @@ public final class MRuntime {
         }
     }
 
+    /** ISO = : both numeric → numeric; else string (J17 contract). */
+    public static boolean eq(MValue a, MValue b) {
+        boolean an = a.isnum || jvmumps.ExprEval.numericStr(a.asStr());
+        boolean bn = b.isnum || jvmumps.ExprEval.numericStr(b.asStr());
+        if (an && bn) return a.asNum() == b.asNum();
+        return a.asStr().equals(b.asStr());
+    }
+
+    public static boolean lt(MValue a, MValue b) {
+        boolean an = a.isnum || jvmumps.ExprEval.numericStr(a.asStr());
+        boolean bn = b.isnum || jvmumps.ExprEval.numericStr(b.asStr());
+        if (an || bn) return a.asNum() < b.asNum();
+        return a.asStr().compareTo(b.asStr()) < 0;
+    }
+
+    /** M10 NEW name — hide local (restore later via scope stack in LineInterp; here clear). */
+    public void newVar(String name) {
+        if (name == null) return;
+        if (name.startsWith("^")) return;
+        locals.remove(name);
+        // also clear from store tree if present
+        store.kill(List.of(name), false);
+    }
+
+    public void killVar(String name) {
+        if (name == null || name.isEmpty()) return;
+        List<String> path = List.of(name);
+        boolean glob = name.startsWith("^");
+        locals.remove(name);
+        store.kill(path, glob);
+    }
+
+    /** MERGE dst ← src. */
+    public void mergeVar(String dst, String src) {
+        if (dst == null || src == null) return;
+        MValue v;
+        try {
+            v = getVar(src);
+        } catch (jvmumps.MError e) {
+            v = MValue.EMPTY;
+        }
+        setVar(dst, v);
+    }
+
     // ---- M5 devices --------------------------------------------------
     public void openDevice(int n, String path) {
         try {

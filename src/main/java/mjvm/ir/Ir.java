@@ -35,6 +35,17 @@ public final class Ir {
     public static final int TSTART = 72;
     public static final int TCOMMIT = 73;
     public static final int TROLLBACK = 74;
+    // M10 control + data
+    public static final int MOD = 15;
+    public static final int EQ = 16;
+    public static final int LT = 17;
+    public static final int GT = 18;
+    public static final int LE = 19;
+    public static final int GE = 22;
+    public static final int NE = 23;
+    public static final int NEW = 80;
+    public static final int KILL = 81;
+    public static final int MERGE = 82;
 
     public final int op;
     public final String name;   // var / label / write-tag
@@ -128,6 +139,19 @@ public final class Ir {
 
     public static Ir ret() {
         return new Ir(RET, null, null, 0, 0);
+    }
+
+    public static Ir newName(String n) {
+        return new Ir(NEW, n, null, 0, 0);
+    }
+
+    public static Ir killName(String n) {
+        return new Ir(KILL, n, null, 0, 0);
+    }
+
+    /** MERGE dst ← src (both name strings). */
+    public static Ir mergeName(String dst, String src) {
+        return new Ir(MERGE, dst, src, 0, 0);
     }
 
     public static List<Ir> program(Ir... ops) {

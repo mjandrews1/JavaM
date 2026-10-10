@@ -26,7 +26,7 @@ public final class IrMachine {
                 }
                 case Ir.LOAD -> vals[sp++] = rt.getVar(op.name);
                 case Ir.STORE -> rt.setVar(op.name, vals[--sp]);
-                case Ir.ADD, Ir.SUB, Ir.MUL, Ir.DIV, Ir.CONCAT -> {
+                case Ir.ADD, Ir.SUB, Ir.MUL, Ir.DIV, Ir.CONCAT, Ir.MOD -> {
                     MValue b = vals[--sp];
                     MValue a = vals[--sp];
                     if (op.op == Ir.CONCAT) {
@@ -37,10 +37,24 @@ public final class IrMachine {
                             case Ir.ADD -> x + y;
                             case Ir.SUB -> x - y;
                             case Ir.MUL -> x * y;
+                            case Ir.MOD -> y == 0 ? x : x - y * Math.floor(x / y);
                             default -> y == 0 ? 0 : x / y;
                         };
                         vals[sp++] = MValue.ofNumber(r);
                     }
+                }
+                case Ir.EQ, Ir.LT, Ir.GT, Ir.LE, Ir.GE, Ir.NE -> {
+                    MValue b = vals[--sp];
+                    MValue a = vals[--sp];
+                    boolean r = switch (op.op) {
+                        case Ir.EQ -> MRuntime.eq(a, b);
+                        case Ir.LT -> MRuntime.lt(a, b);
+                        case Ir.GT -> MRuntime.lt(b, a);
+                        case Ir.LE -> !MRuntime.lt(b, a);
+                        case Ir.GE -> !MRuntime.lt(a, b);
+                        default -> !MRuntime.eq(a, b);
+                    };
+                    vals[sp++] = MValue.ofNumber(r ? 1 : 0);
                 }
                 case Ir.WRITE -> rt.write(toText(vals[--sp]));
                 case Ir.WRITE_NL -> rt.writeNl();
@@ -84,6 +98,9 @@ public final class IrMachine {
                 case Ir.TSTART -> rt.tstart();
                 case Ir.TCOMMIT -> rt.tcommit();
                 case Ir.TROLLBACK -> rt.trollback();
+                case Ir.NEW -> rt.newVar(op.name);
+                case Ir.KILL -> rt.killVar(op.name);
+                case Ir.MERGE -> rt.mergeVar(op.name, op.ival);
                 case Ir.RET -> {
                     return;
                 }

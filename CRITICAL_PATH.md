@@ -79,7 +79,7 @@ mJVM **M1+** waits on JvMumps J1–J2 (values + commands) so the frontend is not
 ## Catch-up (2026-10-09) — J12–J17 / M10–M12
 
 **Target:** both parts at peer level `MATCH=131 MISS=8 ERR=0` (misses = RSM upstream-bug set).
-**Baseline:** JvMumps ✅ **131/8/0** (target) · mJVM 8/3/128. **Plan:** [`docs/CATCHUP-2026-10.md`](docs/CATCHUP-2026-10.md).
+**Baseline:** JvMumps ✅ **131/8/0** (target) · mJVM **19/5/115** (M10). **Plan:** [`docs/CATCHUP-2026-10.md`](docs/CATCHUP-2026-10.md).
 
 | ID | Task | Cases | Ticket |
 |----|------|------:|--------|
@@ -90,7 +90,7 @@ mJVM **M1+** waits on JvMumps J1–J2 (values + commands) so the frontend is not
 | **J15** | WRITE device params + `$X`/`$Y` | ✅ | jvmumps#10 |
 | **J16** | FOR/`$STACK`/`$TEXT`/SET `$EXTRACT` | ✅ | jvmumps#11 |
 | **J17** | ISO `=` flip (C24) | ✅ | jvmumps#12 |
-| **M10** | mJVM IF/ELSE/FOR + NEW/KILL/MERGE | ~60 err | jvmumps#13 |
+| **M10** | mJVM IF/ELSE/FOR + NEW/KILL/MERGE | ✅ 19/5/115 | jvmumps#13 |
 | **M11** | mJVM calls/intrinsics/indirection | ~65 err | jvmumps#14 |
 | **M12** | mJVM numerics + parity gate | 3 + gate | jvmumps#15 |
 
