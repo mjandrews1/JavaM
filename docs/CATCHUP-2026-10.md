@@ -14,7 +14,7 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 |-------|------:|-----:|----:|
 | RSM / PyMumps / C3Mumps | 131 | 8 | 0 | ← target |
 | **JvMumps** | **131** | **8** | **0** | **target — miss names = upstream set** |
-| **mJVM** | 84 | 55 | 0 | (was 8/3/128; M10–M11) |
+| **mJVM** | **131** | **8** | **0** | **target — miss names = upstream set** |
 
 **Hard rule:** never weaken test wants to match engine output — fix the engine (ISO/RSM semantics).
 
@@ -134,7 +134,7 @@ After J17 the miss set must be **exactly**:
 
 ---
 
-## Part 2 — mJVM (8/3/128 → 131/8/0)
+## Part 2 — mJVM ✅ **131/8/0** (target hit)
 
 128 ERR are `mJVM M2: command not in compiled subset` — expand `MFrontend`/`BytecodeEmitter`/`MRuntime`. 3 MISS are numeric semantics.
 
@@ -156,7 +156,7 @@ Gate: subset no longer throws on `I`/`E`/`F`/`N`/`K`/`M`. **✅ met** — 8/3/12
 
 Gate: ERR count driven to 0 on the 139-case corpus. **✅ met** — 19/5/115 → **84/55/0**.
 
-### Wave M12 — numeric semantics + parity gate · jvmumps#15
+### Wave M12 — numeric semantics + parity gate ✅ · jvmumps#15
 
 | Case | Today | Want |
 |------|-------|------|
@@ -197,7 +197,7 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 | J17 ISO `=` flip | jvmumps#12 |
 | M10 IF/ELSE/FOR/NEW/KILL/MERGE | ✅ 19/5/115 | jvmumps#13 |
 | M11 calls/intrinsics | jvmumps#14 |
-| M12 numerics + gate | jvmumps#15 |
+| M12 parity gate | ✅ **131/8/0** | jvmumps#15 |
 
 Do not reopen closed jvmumps#1–#6. Do not reopen `rsm#20`.
 

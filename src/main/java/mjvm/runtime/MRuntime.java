@@ -39,12 +39,10 @@ public final class MRuntime {
                 MRuntime.this.setVar(name, v);
             }
             @Override public int data(String name) {
-                try {
-                    jvmumps.MValue v = MRuntime.this.getVar(name);
-                    return v == jvmumps.MValue.EMPTY ? 0 : 1;
-                } catch (jvmumps.MError e) {
-                    return 0;
-                }
+                return MRuntime.this.data(name);
+            }
+            @Override public String order(String key, double dir) {
+                return MRuntime.this.order(key, dir);
             }
         });
     }
@@ -145,19 +143,73 @@ public final class MRuntime {
         out.append('\n');
     }
 
+    static List<String> pathOf(String name) {
+        List<String> path = new ArrayList<>();
+        int p = name.indexOf('(');
+        if (p < 0) {
+            path.add(name);
+            return path;
+        }
+        path.add(name.substring(0, p));
+        String inner = name.substring(p + 1, name.lastIndexOf(')'));
+        int depth = 0;
+        boolean inS = false;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (inS) {
+                if (c == '"') inS = false;
+                else if (c != '"') { /* keep */ }
+                sb.append(c);
+                if (c == '"' && sb.length() > 1 && inner.charAt(i) == '"') { }
+                continue;
+            }
+            if (c == '"') {
+                inS = true;
+                sb.append(c);
+                continue;
+            }
+            if (c == '(') {
+                depth++;
+                sb.append(c);
+                continue;
+            }
+            if (c == ')') {
+                depth--;
+                sb.append(c);
+                continue;
+            }
+            if (c == ',' && depth == 0) {
+                path.add(subOf(sb.toString().trim()));
+                sb.setLength(0);
+                continue;
+            }
+            sb.append(c);
+        }
+        if (sb.length() > 0) path.add(subOf(sb.toString().trim()));
+        return path;
+    }
+
+    static String subOf(String s) {
+        if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
+    }
+
     public MValue getVar(String name) {
         if (locals.containsKey(name)) return locals.get(name);
-        List<String> path = List.of(name);
-        boolean glob = name.startsWith("^");
-        if (!glob && store.data(path, false) == 0) {
+        List<String> path = pathOf(name);
+        boolean glob = path.get(0).startsWith("^");
+        if (!glob && store.data(path, false) % 2 == 0) {
             throw new jvmumps.MError("Undefined local variable");
         }
         return store.get(path, glob);
     }
 
     public void setVar(String name, MValue v) {
-        List<String> path = List.of(name);
-        boolean glob = name.startsWith("^");
+        List<String> path = pathOf(name);
+        boolean glob = path.get(0).startsWith("^");
         if (tlevel > 0) {
             MValue old = store.get(path, glob);
             recordUndo(path, glob, old);
@@ -237,10 +289,49 @@ public final class MRuntime {
 
     public void killVar(String name) {
         if (name == null || name.isEmpty()) return;
-        List<String> path = List.of(name);
-        boolean glob = name.startsWith("^");
+        List<String> path = pathOf(name);
+        boolean glob = path.get(0).startsWith("^");
         locals.remove(name);
         store.kill(path, glob);
+    }
+
+    /** M12: $ORDER / $DATA / $QUERY / $NAME via the store tree. */
+    public String order(String key, double dir) {
+        List<String> path = pathOf(key);
+        return store.order(path, path.get(0).startsWith("^"), dir);
+    }
+
+    public int data(String key) {
+        List<String> path = pathOf(key);
+        return store.data(path, path.get(0).startsWith("^"));
+    }
+
+    /** SET $EXTRACT(ref,from,to)=v / SET $PIECE(ref,d,f,t)=v */
+    public void setExtract(String ref, int from, int to, String v) {
+        List<String> path = pathOf(ref);
+        boolean glob = path.get(0).startsWith("^");
+        String cur = store.get(path, glob).asStr();
+        if (to < from) to = from;
+        if (from < 1) from = 1;
+        int n = cur.length();
+        String nu;
+        if (from > n) {
+            StringBuilder sb = new StringBuilder(cur);
+            while (sb.length() < from - 1) sb.append(' ');
+            sb.append(v);
+            nu = sb.toString();
+        } else {
+            int end = Math.min(to, n);
+            nu = cur.substring(0, from - 1) + v + cur.substring(end);
+        }
+        setVar(ref, jvmumps.MValue.ofString(nu));
+    }
+
+    public void setPiece(String ref, String d, int from, int to, String v) {
+        List<String> path = pathOf(ref);
+        boolean glob = path.get(0).startsWith("^");
+        String cur = store.get(path, glob).asStr();
+        setVar(ref, jvmumps.MValue.ofString(jvmumps.LineInterp.setPieceOf(cur, d, from, to, v)));
     }
 
     /** MERGE dst ← src. */

@@ -1043,7 +1043,7 @@ public final class LineInterp {
     }
 
     /** SET $PIECE(s,d,f[,t])=v — replace pieces f..t with v. */
-    static String setPieceOf(String s, String d, int from, int to, String v) {
+    public static String setPieceOf(String s, String d, int from, int to, String v) {
         if (to < from) {
             to = from;
         }

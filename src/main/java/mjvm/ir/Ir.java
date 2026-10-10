@@ -49,6 +49,8 @@ public final class Ir {
     public static final int KILL = 81;
     public static final int MERGE = 82;
     public static final int EVAL_EXPR = 83;
+    public static final int SET_EXTRACT = 84;
+    public static final int SET_PIECE = 85;
 
     public final int op;
     public final String name;   // var / label / write-tag
@@ -168,6 +170,16 @@ public final class Ir {
     /** Evaluate an M expression source via JvMumps ExprEval (M11 bridge). */
     public static Ir evalExpr(String src) {
         return new Ir(EVAL_EXPR, null, src, 0, 0);
+    }
+
+    /** SET $EXTRACT(ref,from[,to])=v — ival = "from,to" */
+    public static Ir setExtract(String ref, int from, int to) {
+        return new Ir(SET_EXTRACT, ref, from + "," + to, 0, 0);
+    }
+
+    /** SET $PIECE(ref,d,f[,t])=v — ival = "delim,from,to" */
+    public static Ir setPiece(String ref, String d, int from, int to) {
+        return new Ir(SET_PIECE, ref, d + "\u0001" + from + "\u0001" + to, 0, 0);
     }
 
     public static List<Ir> program(Ir... ops) {

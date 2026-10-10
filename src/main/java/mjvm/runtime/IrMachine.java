@@ -121,6 +121,16 @@ public final class IrMachine {
                 case Ir.KILL -> rt.killVar(op.name);
                 case Ir.MERGE -> rt.mergeVar(op.name, op.ival);
                 case Ir.EVAL_EXPR -> vals[sp++] = rt.evalExpr(op.ival);
+                case Ir.SET_EXTRACT -> {
+                    MValue v = vals[--sp];
+                    String[] ft = op.ival.split(",");
+                    rt.setExtract(op.name, Integer.parseInt(ft[0]), Integer.parseInt(ft[1]), v.asStr());
+                }
+                case Ir.SET_PIECE -> {
+                    MValue v = vals[--sp];
+                    String[] parts = op.ival.split("\u0001", -1);
+                    rt.setPiece(op.name, parts[0], Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), v.asStr());
+                }
                 case Ir.RET -> {
                     return;
                 }

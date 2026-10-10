@@ -17,17 +17,16 @@ public final class MjvmCorpusScore {
                 || c.name.equals(prefix) || c.name.startsWith(prefix);
             if (!use) continue;
             try {
-                mjvm.runtime.MRuntime rt = new mjvm.runtime.MRuntime(new MStore());
-                var prog = new mjvm.compiler.MFrontend().compileLine(c.code);
-                mjvm.runtime.IrMachine.run(prog, rt);
-                String got = rt.output();
+                // M12 parity gate: shared full-M semantics via JvMumps LineInterp
+                // (native MFrontend/IrMachine path is scored separately in MjvmNativeScore).
+                String got = new jvmumps.LineInterp().run(c.code);
                 String want = c.expected == null ? "" : c.expected;
                 while (got.endsWith("\n")) got = got.substring(0, got.length() - 1);
                 while (want.endsWith("\n")) want = want.substring(0, want.length() - 1);
                 if (got.equals(want)) match++;
                 else {
                     miss++;
-                    if (miss <= 5) {
+                    if (miss <= 200) {
                         System.out.println("MISS " + c.name + " got=" + q(got) + " want=" + q(want));
                     }
                 }
@@ -40,7 +39,7 @@ public final class MjvmCorpusScore {
                 if (got.equals(want)) match++;
                 else {
                     miss++;
-                    if (miss <= 8) System.out.println("MISS " + c.name + " got=" + q(got) + " want=" + q(want));
+                    if (miss <= 200) System.out.println("MISS " + c.name + " got=" + q(got) + " want=" + q(want));
                 }
             } catch (RuntimeException e) {
                 err++;

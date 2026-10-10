@@ -55,6 +55,25 @@ public final class MFrontend {
                 }
             }
             i = skipWs(line, i);
+            // M12 postcond  W:expr / S:expr — skip rest of line if false
+            if (i < line.length() && line.charAt(i) == ':') {
+                i++;
+                int cs = i;
+                i = scanExprEnd(line, i, " ");
+                String cond = line.substring(cs, i).trim();
+                out.add(Ir.evalExpr(cond));
+                int j0 = out.size();
+                out.add(Ir.jmp0(-1));
+                // rest of line is the guarded command(s) — compile into body and jump over if false
+                int restStart = i;
+                List<Ir> body = new ArrayList<>();
+                compileInto(line.substring(restStart), body);
+                out.add(Ir.jmp(out.size() + body.size() + 1));
+                out.addAll(body);
+                out.set(j0, Ir.jmp0(out.size()));
+                i = line.length();
+                continue;
+            }
             if (cmd.equals("S") || cmd.equals("SET")) {
                 i = compileSet(line, i, out);
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
@@ -227,6 +246,32 @@ public final class MFrontend {
             j++;
         }
         String spec = line.substring(i, j);
+        // M12: exclusive list FOR I=5,3,1
+        if (spec.indexOf(':') < 0 && spec.indexOf(',') >= 0) {
+            List<String> items = splitOnColons(spec); // wrong splitter
+            items = new ArrayList<>();
+            StringBuilder sb = new StringBuilder();
+            int dep = 0;
+            boolean inStr = false;
+            for (int k = 0; k < spec.length(); k++) {
+                char c = spec.charAt(k);
+                if (inStr) { sb.append(c); if (c == '"') inStr = false; continue; }
+                if (c == '"') { inStr = true; sb.append(c); continue; }
+                if (c == '(') { dep++; sb.append(c); continue; }
+                if (c == ')') { dep--; sb.append(c); continue; }
+                if (c == ',' && dep == 0) { items.add(sb.toString()); sb.setLength(0); continue; }
+                sb.append(c);
+            }
+            items.add(sb.toString());
+            String body = line.substring(j);
+            while (body.startsWith(" ")) body = body.substring(1);
+            for (String item : items) {
+                compileExprSrc(item.trim(), out);
+                out.add(Ir.store(var));
+                compileInto(body, out);
+            }
+            return line.length();
+        }
         List<String> segs = splitOnColons(spec);
         String fromS = segs.get(0);
         String incS;
@@ -411,11 +456,27 @@ public final class MFrontend {
                         int vs = k;
                         k = scanExprEnd(line, k, " ,");
                         String val = line.substring(vs, k).trim();
-                        String ref = inner.split(",")[0].trim();
-                        // do a simple replace into ref via eval of a SET string
-                        out.add(Ir.evalExpr("SET $" + sp.substring(1) + "(" + inner + ")=" + val));
-                        // store dummy so stack balanced — evalExpr already set via Env?
-                        // Not yet: emit eval of value then store to ref for simple case
+                        String[] parts = inner.split(",");
+                        String ref = parts[0].trim();
+                        int from = 1;
+                        int to = 1;
+                        String d = ",";
+                        if (sp.equals("$E") || sp.equals("$EXTRACT")) {
+                            if (parts.length > 1) from = (int) jvmumps.ExprEval.toNum(parts[1].trim());
+                            to = from;
+                            if (parts.length > 2) to = (int) jvmumps.ExprEval.toNum(parts[2].trim());
+                            out.add(Ir.evalExpr(val));
+                            out.add(Ir.setExtract(ref, from, to));
+                        } else {
+                            // $PIECE(ref,d,f[,t])
+                            d = parts.length > 1 ? parts[1].trim() : ",";
+                            if (d.length() >= 2 && d.charAt(0) == '"') d = d.substring(1, d.length() - 1);
+                            if (parts.length > 2) from = (int) jvmumps.ExprEval.toNum(parts[2].trim());
+                            to = from;
+                            if (parts.length > 3) to = (int) jvmumps.ExprEval.toNum(parts[3].trim());
+                            out.add(Ir.evalExpr(val));
+                            out.add(Ir.setPiece(ref, d, from, to));
+                        }
                         i = k;
                         if (i < line.length() && line.charAt(i) == ',') {
                             i++;
@@ -443,9 +504,10 @@ public final class MFrontend {
             while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
                     || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
             if (i == st) throw new MError("SET target must be a name");
-            String name = line.substring(st, i);
+            StringBuilder nm = new StringBuilder(line.substring(st, i));
             if (i < line.length() && line.charAt(i) == '(') {
                 int depth = 0;
+                int stp = i;
                 while (i < line.length()) {
                     char c = line.charAt(i++);
                     if (c == '(') depth++;
@@ -454,7 +516,9 @@ public final class MFrontend {
                         if (depth == 0) break;
                     }
                 }
+                nm.append(line, stp, i);
             }
+            String name = nm.toString();
             i = skipWs(line, i);
             if (i >= line.length() || line.charAt(i) != '=')
                 throw new MError("SET requires = after " + name);
