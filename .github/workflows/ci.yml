@@ -35,6 +35,31 @@ jobs:
           grep -q 'MATCH=131' native-score.txt
           grep -q 'ERR=0' native-score.txt
 
+
+      - name: Dependency advisory (OSV)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.request, sys
+          pkgs = [
+            ("org.xerial:sqlite-jdbc", "3.45.1.0"),
+            ("org.slf4j:slf4j-api", "2.0.13"),
+            ("org.slf4j:slf4j-nop", "2.0.13"),
+          ]
+          bad = 0
+          for name, ver in pkgs:
+              body = json.dumps({"package": {"ecosystem": "Maven", "name": name}, "version": ver}).encode()
+              req = urllib.request.Request("https://api.osv.dev/v1/query", data=body,
+                  headers={"Content-Type": "application/json", "User-Agent": "javam-ci/0.1"})
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  vulns = json.loads(r.read().decode()).get("vulns") or []
+              print(f"{{name}} {{ver}}: {{len(vulns)}} vulns")
+              for v in vulns:
+                  print(" ", v.get("id"), (v.get("summary") or "")[:80])
+                  bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: FmJv smoke
         run: |
           java -cp "build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" jvmumps.FmJv
