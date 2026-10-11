@@ -1,33 +1,43 @@
-# JavaM / mJVM heuristics (ranked)
+# JavaM / mJVM heuristics (de-duplicated, ranked)
 
-**Order:** most → least important. Keep this order when prioritizing work.  
-Solo project: peer-review rules are **skipped** by design.
+**Order:** most → least important. Solo project — **no peer-review rule**.
 
-| Rank | Heuristic | Issue |
-|-----:|-----------|-------|
-| **1** | Automated tests in CI on **each commit** (every rule is enforced) | [#41](https://github.com/mjandrews1/JavaM/issues/41) |
-| **2** | Tests **cover new behavior** in the same PR | [#49](https://github.com/mjandrews1/JavaM/issues/49) |
-| **3** | Test **fails without the change** (red/green necessity) | [#55](https://github.com/mjandrews1/JavaM/issues/55) |
-| **4** | **Concurrency:** safe/secure/private shared data; 1W-nR and nW-nR; queued CRUD; locks | [#37](https://github.com/mjandrews1/JavaM/issues/37) |
-| **5** | **Deps pinned; no known CVEs** before merge | [#46](https://github.com/mjandrews1/JavaM/issues/46) |
-| **6** | **JLS / JVMS** informed use (cite sections; `--release 21`) | [#38](https://github.com/mjandrews1/JavaM/issues/38) |
-| **7** | New **modules ⇒ integration tests** before merge | [#45](https://github.com/mjandrews1/JavaM/issues/45) |
-| **8** | **No perf regression** — benchmark on every change | [#44](https://github.com/mjandrews1/JavaM/issues/44) |
-| **9** | **Rollback plan** (incl. if it breaks production) | [#48](https://github.com/mjandrews1/JavaM/issues/48) |
-| **10** | **What could break** + regression verification | [#52](https://github.com/mjandrews1/JavaM/issues/52) |
-| **11** | **Reproduce** what was tested | [#50](https://github.com/mjandrews1/JavaM/issues/50) |
-| **12** | **Dependency graphs** on demand + **cycle detection** | [#39](https://github.com/mjandrews1/JavaM/issues/39) |
-| **13** | Beware **god objects / god files** | [#42](https://github.com/mjandrews1/JavaM/issues/42) |
-| **14** | **Java Modules (JPMS)** best practice | [#40](https://github.com/mjandrews1/JavaM/issues/40) |
-| **15** | **Docs** updated before merge | [#47](https://github.com/mjandrews1/JavaM/issues/47) |
-| **16** | **Changelog** — what changed **and why** | [#51](https://github.com/mjandrews1/JavaM/issues/51) |
-| **17** | **Javadoc** on public API + quarterly review | [#43](https://github.com/mjandrews1/JavaM/issues/43) |
-| **18** | Link every change to its **ticket** | [#54](https://github.com/mjandrews1/JavaM/issues/54) |
-| **19** | Name **maintainer** for post-merge ownership | [#53](https://github.com/mjandrews1/JavaM/issues/53) |
+## Correctness (non-negotiable)
 
-**Skipped:** second-engineer review (solo practitioner).
+| Rank | Heuristic | Absorbs |
+|-----:|-----------|---------|
+| **1** | **Tests are real and enforced** — CI on every commit; new behavior tested in the same PR; the test **fails without the change**; new **modules** need integration tests | #41, #49, #55, #45 |
+| **2** | **Concurrency & data safety** — safe/secure/private shared data; locks; **1W-nR** and **nW-nR** queued CRUD; defined reader/writer caps | #37 |
+| **3** | **JLS / JVMS** — cite sections; `--release 21` / classfile 65; no folklore | #38 |
 
-## How to use
-1. Prefer higher-ranked rules when they conflict.  
-2. Safety/correctness (1–7) beat process polish (15–19).  
-3. Performance (8) never overrides semantic correctness (2–4).
+## Safety & change quality
+
+| Rank | Heuristic | Absorbs |
+|-----:|-----------|---------|
+| **4** | **Dependencies** pinned; **no known CVEs** (or dated exception) | #46 |
+| **5** | **Risk & rollback** — what could break; regression check; documented rollback **if it breaks production** | #52, #48 |
+| **6** | **No perf regression** — benchmark every change; threshold + justification | #44 |
+| **7** | **Reproduce** — what was tested and how (commands, host, expected vs actual) | #50 |
+
+## Structure
+
+| Rank | Heuristic | Absorbs |
+|-----:|-----------|---------|
+| **8** | **Dependency graphs** on demand (M + Java) + **cycle detection** | #39 |
+| **9** | **No god objects / god files** | #42 |
+| **10** | **JPMS** best practice (exports, no cyclic modules) | #40 |
+
+## Documentation & ownership
+
+| Rank | Heuristic | Absorbs |
+|-----:|-----------|---------|
+| **11** | **Docs + changelog** in the same PR — what changed **and why** | #47, #51 |
+| **12** | **Javadoc** on public API + quarterly review | #43 |
+| **13** | **Traceability** — PR links issue; names **maintainer** | #54, #53 |
+
+## Skipped
+- Second-engineer review (solo practitioner).
+
+## Conflict rule
+Correctness (1–3) &gt; safety (4–7) &gt; structure (8–10) &gt; docs/meta (11–13).  
+Perf never overrides semantic correctness.
