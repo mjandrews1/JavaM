@@ -16,10 +16,15 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Smoke suite
+      - name: Smoke suite (all *Smoke)
         env:
           CORPUS: ${{ github.workspace }}/tests/conformance.json
         run: make smoke
+
+      - name: Integration (SqlStore itest)
+        env:
+          CORPUS: ${{ github.workspace }}/tests/conformance.json
+        run: make itest
 
       - name: Corpus runner
         env:
