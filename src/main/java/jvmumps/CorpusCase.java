@@ -20,6 +20,15 @@ public final class CorpusCase {
      * {"cases":[{"name":..,"code":..,"expected":..}, ...]}
      * Avoids a JSON dependency for J0.
      */
+
+    /** Resolve corpus path: args[0] > $CORPUS > tests/conformance.json. */
+    public static String corpusPath(String[] args) {
+        if (args != null && args.length > 0 && !args[0].isEmpty()) return args[0];
+        String env = System.getenv("CORPUS");
+        if (env != null && !env.isEmpty()) return env;
+        return "tests/conformance.json";
+    }
+
     public static List<CorpusCase> load(String path) throws Exception {
         String text = java.nio.file.Files.readString(java.nio.file.Path.of(path));
         List<CorpusCase> out = new ArrayList<>();

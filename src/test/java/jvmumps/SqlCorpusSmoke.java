@@ -5,7 +5,7 @@ public class SqlCorpusSmoke {
   public static void main(String[] a) throws Exception {
     File db = File.createTempFile("sqc",".db"); db.deleteOnExit();
     SqlStore st = new SqlStore(db.getAbsolutePath());
-    List<CorpusCase> cs = CorpusCase.load(a.length>0?a[0]:"/Users/mark/pymumps/tests/conformance.json");
+    List<CorpusCase> cs = CorpusCase.load(CorpusCase.corpusPath(a));
     int m=0,x=0;
     for (CorpusCase c : cs) {
       if (!c.name.matches("C0[1-9]|C1[0-5]|C0[1-9]\\..*|C1[0-5]\\..*")) continue;

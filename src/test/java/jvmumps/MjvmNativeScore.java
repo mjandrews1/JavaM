@@ -5,7 +5,7 @@ import java.util.List;
 /** Native mJVM path (MFrontend+IrMachine) without LineInterp fallback. */
 public final class MjvmNativeScore {
     public static void main(String[] args) throws Exception {
-        String path = args.length > 0 ? args[0] : "/Users/mark/pymumps/tests/conformance.json";
+        String path = CorpusCase.corpusPath(args);
         String prefix = args.length > 1 ? args[1] : "*";
         List<CorpusCase> cases = CorpusCase.load(path);
         int match = 0, miss = 0, err = 0;
