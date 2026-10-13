@@ -12,6 +12,7 @@ import java.util.List;
  * Live SQLite backend for the M engine (J7).
  * Key: name + SEP + sub + SEP + …  for prefix scans.
  */
+/** SQLite-backed {@link StoreApi} (WAL; tests use temp files). */
 public final class SqlStore implements StoreApi {
     static final char SEP = 1;
 

@@ -15,6 +15,7 @@ import jvmumps.MError;
  *
  * Constant-pool layout is built in one pass via {@link Cp}.
  */
+/** Direct classfile emitter for IR (M2/M3); preferred over generated Java. */
 public final class BytecodeEmitter {
 
     public static byte[] emit(List<mjvm.ir.Ir> prog, String className) {

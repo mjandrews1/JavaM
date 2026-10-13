@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** J1: evaluate M expressions via ExprEval (string + numeric). */
+/** Expression-only engine: evaluate M expr strings via {@link ExprEval}. */
 public final class ExprEngine implements Engine {
     private final Map<String, MValue> vars = new HashMap<>();
     private final ExprEval eval = new ExprEval(new ExprEval.Env() {

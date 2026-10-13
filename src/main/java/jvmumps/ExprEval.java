@@ -6,16 +6,19 @@ import java.util.List;
 /**
  * J1 expression evaluator: M values + ISO arithmetic, concat, compare, logic.
  *
- * Precedence (high → low), left-associative including ** (C32: 2**3**2 = 64):
- *   unary - + '
+ * <p>Precedence (high to low), left-associative including
+ * {@code **} (C32: {@code 2**3**2 = 64}):
+ * <pre>
+ *   unary  - + '
  *   ** * / \ #
  *   + -
  *   _
- *   = < > <= >= [ ] ]] '= &lt;= ...
+ *   = &lt; &gt; &lt;= &gt;= [ ] ]] '=
  *   &amp;
  *   !
+ * </pre>
  *
- * Number display uses M mstr (0.5 → ".5", -0.5 → "-.5").
+ * <p>Number display uses M {@code mstr} ({@code 0.5} -&gt; {@code ".5"}).
  */
 public final class ExprEval {
     private final Env env;

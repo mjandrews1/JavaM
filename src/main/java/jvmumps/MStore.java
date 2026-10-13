@@ -11,6 +11,7 @@ import java.util.Map;
  * Keys are name + subscript strings; empty value means node with no data
  * but possibly children ($DATA 10).
  */
+/** In-memory {@link StoreApi} (direct-mode default; no persistence). */
 public final class MStore implements StoreApi {
     public static final class Node {
         MValue value = MValue.EMPTY;
