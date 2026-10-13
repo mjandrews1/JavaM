@@ -39,7 +39,7 @@ smoke: all mjvm
 	$(JAVA) -cp $(CP) jvmumps.J0Smoke $(CORPUS); \
 	for c in $(SMOKE_NOARG); do \
 	  echo "== $$c =="; \
-	  $(JAVA) -cp $(CP) jvmumps.$$c; \
+	  $(JAVA) -cp $(CP) jvmumps.$$c $(CORPUS); \
 	done; \
 	echo "SMOKE ALL OK $(words $(SMOKE_CLASSES))"
 
@@ -60,7 +60,7 @@ itest: all
 	@set -e; \
 	for c in $(ITEST_CLASSES); do \
 	  echo "== itest $$c =="; \
-	  $(JAVA) -cp $(CP) jvmumps.$$c; \
+	  $(JAVA) -cp $(CP) jvmumps.$$c $(CORPUS); \
 	done; \
 	echo "ITEST OK $(words $(ITEST_CLASSES))"
 
