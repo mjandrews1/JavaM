@@ -13,7 +13,7 @@ public final class J0Smoke {
         check(e.evalLine("S X=1").isEmpty(), "set");
         check(e.evalLine("W \"hi\",!").equals("hi\n"), "write");
 
-        int count = CorpusCase.load(args.length > 0 ? args[0] : "../pymumps/tests/conformance.json").size();
+        int count = CorpusCase.load(CorpusCase.corpusPath(args)).size();
         check(count > 50, "corpus cases=" + count);
 
         System.out.println("J0 SMOKE OK cases=" + count);
