@@ -7,18 +7,23 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
-## [Unreleased]
+## [0.3.0] — 2026-10-13
+
+**GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0
 
 ### Added
 - **#64** CI: `make smoke` runs **all** `*Smoke` classes (92) + `make itest` (SqlStore) + PR **Red / green** field (`Makefile`, `ci.yml`, PR template).
 - **#70** `CorpusCase.corpusPath` — `args[0]` > `$CORPUS` > `tests/conformance.json`; no `/Users/mark` defaults in test/score mains.
+- **#61** `CHANGELOG.md` (this file).
+- **#62** type/method Javadoc on public API + `make javadoc` (exit 0).
 
 ### Fixed
-- **#64/#69** `ClassEmitter`: generated Java used illegal `goto` / unreachable labels. Replaced with **pc-switch dispatch**; full IR (MOD, relators, NEW/KILL/MERGE, EVAL_EXPR, SET $E/$P, CALL_PC, RET_TO, XECUTE).
+- **#64/#69** `ClassEmitter`: illegal Java `goto` / unreachable labels → **pc-switch dispatch**; full IR.
 - **#64/#70** CI `NoSuchFileException` on hardcoded Mac corpus path.
+- `MjvmM7Smoke` expected stale `V0.1.0`; `Mjvm.VERSION` is **`V0.3.0 (mJVM)`**.
 
 ### Docs
-- **#61** this `CHANGELOG.md` (what + why per change; PR checklist already requires an entry).
+- RSM file-backed production oracle note on `MStore` / `SqlStore`.
 
 ---
 
@@ -89,3 +94,5 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 ```
 
 Every user-visible PR should append here (PR template checkbox).
+
+[0.3.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0

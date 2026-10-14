@@ -3,6 +3,7 @@
 **Last updated:** 2026-10-05  
 **Status:** project charter and critical path (implementation in progress alongside PyMumps/C3Mumps).  
 **Sibling:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps / C3Mumps — same full-M charter).
+**Release:** [**v0.3.0**](https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0) · see [CHANGELOG.md](CHANGELOG.md).
 
 Two products, one repo family. **Both are complete M implementations** with **RSM-equivalent scope**, using RSM as a **model** — not a line-by-line or file-by-file port.
 
