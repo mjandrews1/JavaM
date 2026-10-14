@@ -5,8 +5,8 @@ import java.util.List;
 
 /** Routine / DO / GOTO / QUIT / extrinsic runner for {@link LineInterp} (deep split, #58). */
 final class LineRoutine {
-        static java.util.List<LineInterp.RtLine> parseRoutine(String code) {
-            java.util.List<LineInterp.RtLine> lines = new ArrayList<>();
+        static java.util.List<LineState.RtLine> parseRoutine(String code) {
+            java.util.List<LineState.RtLine> lines = new ArrayList<>();
             for (String raw : code.split("\n", -1)) {
                 String tag = null;
                 List<String> formals = null;
@@ -42,7 +42,7 @@ final class LineRoutine {
                         }
                     }
                 }
-                lines.add(new LineInterp.RtLine(tag, formals, body));
+                lines.add(new LineState.RtLine(tag, formals, body));
             }
             return lines;
         }
@@ -75,31 +75,31 @@ final class LineRoutine {
     private LineRoutine() {}
 
     static void runRoutine(LineInterp fe, String code) {
-        fe.prog = parseRoutine(code);
-        fe.tags.clear();
-        for (int i = 0; i < fe.prog.size(); i++) {
-            String t = fe.prog.get(i).tag;
+        fe.state.prog = parseRoutine(code);
+        fe.state.tags.clear();
+        for (int i = 0; i < fe.state.prog.size(); i++) {
+            String t = fe.state.prog.get(i).tag;
             if (t != null) {
-                fe.tags.putIfAbsent(t.toUpperCase(), i);
+                fe.state.tags.putIfAbsent(t.toUpperCase(), i);
             }
         }
-        fe.routineMode = true;
-        fe.pc = 0;
-        fe.pendingRest = null;
-        fe.doStack.clear();
+        fe.state.routineMode = true;
+        fe.state.pc = 0;
+        fe.state.pendingRest = null;
+        fe.state.doStack.clear();
         runLoop(fe);
-        fe.routineMode = false;
-        fe.prog = null;
+        fe.state.routineMode = false;
+        fe.state.prog = null;
     }
 
     static void runLoop(LineInterp fe) {
-        while (fe.pc < fe.prog.size() && !fe.quit) {
-            String body = fe.pendingRest != null ? fe.pendingRest : fe.prog.get(fe.pc).body;
-            boolean wasRest = fe.pendingRest != null;
-            fe.pendingRest = null;
-            int pcBefore = fe.pc;
+        while (fe.state.pc < fe.state.prog.size() && !fe.quit) {
+            String body = fe.state.pendingRest != null ? fe.state.pendingRest : fe.state.prog.get(fe.state.pc).body;
+            boolean wasRest = fe.state.pendingRest != null;
+            fe.state.pendingRest = null;
+            int pcBefore = fe.state.pc;
             Cursor c = new Cursor(body);
-            while (!c.atEnd() && !fe.quit && fe.pc == pcBefore && fe.pendingRest == null) {
+            while (!c.atEnd() && !fe.quit && fe.state.pc == pcBefore && fe.state.pendingRest == null) {
                 int before = c.i;
                 LineDispatch.execOne(fe, c);
                 if (c.i == before && !c.atEnd()) {
@@ -109,27 +109,27 @@ final class LineRoutine {
             if (fe.quit) {
                 return;
             }
-            if (fe.pendingRest != null) {
+            if (fe.state.pendingRest != null) {
                 continue; // QUIT popped / DO redirected with rest
             }
-            if (fe.pc != pcBefore) {
+            if (fe.state.pc != pcBefore) {
                 continue; // GOTO / DO jumped
             }
             if (!wasRest) {
-                fe.pc++;
+                fe.state.pc++;
             } else {
                 // finished a resume-rest: continue with the next line after the DO line
-                fe.pc++;
+                fe.state.pc++;
             }
         }
     }
 
     static int findTag(LineInterp fe, String name) {
-        Integer ix = fe.tags.get(name.toUpperCase());
+        Integer ix = fe.state.tags.get(name.toUpperCase());
         return ix == null ? -1 : ix;
     }
 
-    static void bindFormals(LineInterp fe, LineInterp.RtLine line, List<MValue> args) {
+    static void bindFormals(LineInterp fe, LineState.RtLine line, List<MValue> args) {
         if (line.formals == null) {
             return;
         }
@@ -147,34 +147,34 @@ final class LineRoutine {
         if (target < 0) {
             throw new MError("No such label '" + name + "'");
         }
-        int savePc = fe.pc;
-        String saveRest = fe.pendingRest;
+        int savePc = fe.state.pc;
+        String saveRest = fe.state.pendingRest;
         boolean saveQuit = fe.quit;
-        MValue saveVal = fe.extrinsicValue;
+        MValue saveVal = fe.state.extrinsicValue;
         List<String> savedFormals = null;
-        LineInterp.RtLine tl = fe.prog.get(target);
+        LineState.RtLine tl = fe.state.prog.get(target);
         if (tl.formals != null) {
             savedFormals = new ArrayList<>(tl.formals);
         }
-        fe.pendingRest = null;
+        fe.state.pendingRest = null;
         fe.quit = false;
-        fe.extrinsicValue = MValue.EMPTY;
+        fe.state.extrinsicValue = MValue.EMPTY;
         bindFormals(fe, tl, args);
-        int stackBase = fe.doStack.size();
-        fe.doStack.push(new LineInterp.Frame(savePc, saveRest, true, savedFormals));
-        fe.pc = target;
+        int stackBase = fe.state.doStack.size();
+        fe.state.doStack.push(new LineState.Frame(savePc, saveRest, true, savedFormals));
+        fe.state.pc = target;
         runLoop(fe);
         // unwind if the target forgot QUIT
-        while (fe.doStack.size() > stackBase) {
-            LineInterp.Frame f = fe.doStack.pop();
+        while (fe.state.doStack.size() > stackBase) {
+            LineState.Frame f = fe.state.doStack.pop();
             if (f.extrinsic) {
                 break;
             }
         }
-        MValue v = fe.extrinsicValue;
-        fe.extrinsicValue = saveVal;
-        fe.pc = savePc;
-        fe.pendingRest = saveRest;
+        MValue v = fe.state.extrinsicValue;
+        fe.state.extrinsicValue = saveVal;
+        fe.state.pc = savePc;
+        fe.state.pendingRest = saveRest;
         fe.quit = saveQuit;
         return v;
     }
@@ -212,17 +212,17 @@ final class LineRoutine {
         if (ix < 0) {
             throw new MError("No such label '" + target + "'");
         }
-        int retLine = fe.pc;
+        int retLine = fe.state.pc;
         String retRest = c.s.substring(c.i);
         List<String> savedFormals = null;
-        LineInterp.RtLine tl = fe.prog.get(ix);
+        LineState.RtLine tl = fe.state.prog.get(ix);
         if (tl.formals != null) {
             savedFormals = new ArrayList<>(tl.formals);
         }
-        fe.doStack.push(new LineInterp.Frame(retLine, retRest, extrinsic, savedFormals));
+        fe.state.doStack.push(new LineState.Frame(retLine, retRest, extrinsic, savedFormals));
         bindFormals(fe, tl, args);
-        fe.pc = ix;
-        fe.pendingRest = null;
+        fe.state.pc = ix;
+        fe.state.pendingRest = null;
     }
 
     static void doGoto(LineInterp fe, Cursor c) {
@@ -235,17 +235,17 @@ final class LineRoutine {
         if (ix < 0) {
             throw new MError("No such label '" + target + "'");
         }
-        fe.pc = ix;
-        fe.pendingRest = null;
+        fe.state.pc = ix;
+        fe.state.pendingRest = null;
         c.skipToEnd();
     }
 
     static void doQuit(LineInterp fe) {
-        if (!fe.routineMode || fe.doStack.isEmpty()) {
+        if (!fe.state.routineMode || fe.state.doStack.isEmpty()) {
             fe.quit = true;
             return;
         }
-        LineInterp.Frame f = fe.doStack.pop();
+        LineState.Frame f = fe.state.doStack.pop();
         if (f.savedFormals != null) {
             for (String n : f.savedFormals) {
                 fe.eval.set(n, MValue.EMPTY);
@@ -255,18 +255,18 @@ final class LineRoutine {
             fe.quit = true; // end callExtrinsic runLoop
             return;
         }
-        fe.pc = f.retLine;
-        fe.pendingRest = f.retRest == null ? "" : f.retRest;
+        fe.state.pc = f.retLine;
+        fe.state.pendingRest = f.retRest == null ? "" : f.retRest;
     }
 
     static void doQuitExpr(LineInterp fe, String exprSrc) {
         MValue v = fe.eval.eval(exprSrc);
-        fe.extrinsicValue = v;
-        if (!fe.routineMode || fe.doStack.isEmpty()) {
+        fe.state.extrinsicValue = v;
+        if (!fe.state.routineMode || fe.state.doStack.isEmpty()) {
             fe.quit = true;
             return;
         }
-        LineInterp.Frame f = fe.doStack.pop();
+        LineState.Frame f = fe.state.doStack.pop();
         if (f.savedFormals != null) {
             for (String n : f.savedFormals) {
                 fe.eval.set(n, MValue.EMPTY);
@@ -276,8 +276,8 @@ final class LineRoutine {
             fe.quit = true;
             return;
         }
-        fe.pc = f.retLine;
-        fe.pendingRest = f.retRest == null ? "" : f.retRest;
+        fe.state.pc = f.retLine;
+        fe.state.pendingRest = f.retRest == null ? "" : f.retRest;
     }
 
 }
