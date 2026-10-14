@@ -22,6 +22,7 @@ public final class LineInterp {
     int vy = 0;
     private final LineDevices devices = new LineDevices();
     final LineTxLocks tx;
+    LineRefs refs;
 
     // ---- J13 routine state ----
     static final class RtLine {
@@ -66,48 +67,8 @@ public final class LineInterp {
     public LineInterp(StoreApi store) {
         this.store = store;
         this.tx = new LineTxLocks(store);
-        this.eval = new ExprEval(new ExprEval.Env() {
-            @Override
-            public MValue get(String name) {
-                List<String> path = parseRef(name);
-                boolean glob = path.get(0).startsWith("^");
-                if (!glob && store.data(path, false) % 2 == 0) {
-                    // 0 = never set; 10 = descendants only — both undefined as values
-                    throw new MError("Undefined local variable");
-                }
-                return store.get(path, glob);
-            }
-
-            @Override
-            public void set(String name, MValue v) {
-                List<String> path = parseRef(name);
-                store.set(path, path.get(0).startsWith("^"), v);
-            }
-
-            @Override
-            public int data(String name) {
-                List<String> path = parseRef(name);
-                return store.data(path, path.get(0).startsWith("^"));
-            }
-
-            @Override
-            public String query(String key, int dir) {
-                List<String> path = parseRef(key);
-                return store.queryNext(path, path.get(0).startsWith("^"), dir);
-            }
-
-            @Override
-            public String order(String key, double dir) {
-                List<String> path = parseRef(key);
-                return store.order(path, path.get(0).startsWith("^"), dir);
-            }
-
-            @Override
-            public MValue extrinsic(String name, List<MValue> args) {
-                return LineRoutine.callExtrinsic(LineInterp.this, name, args);
-            }
-        });
-        // $X / $Y via names
+        this.eval = new ExprEval(new LineEnv(this, store, null));
+        this.refs = new LineRefs(this.eval);
     }
 
     public String run(String line) {
@@ -138,55 +99,9 @@ public final class LineInterp {
 
     // ---- refs -------------------------------------------------------
 
-    List<String> parseRef(String token) {
-        List<String> path = new ArrayList<>();
-        int p = token.indexOf('(');
-        if (p < 0) {
-            path.add(token);
-            return path;
-        }
-        path.add(token.substring(0, p));
-        String inner = token.substring(p + 1, token.lastIndexOf(')'));
-        int depth = 0;
-        boolean inS = false;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < inner.length(); i++) {
-            char c = inner.charAt(i);
-            if (inS) {
-                sb.append(c);
-                if (c == '"') {
-                    inS = false;
-                }
-                continue;
-            }
-            if (c == '"') {
-                inS = true;
-                sb.append(c);
-            } else if (c == ',' && depth == 0) {
-                path.add(subToken(sb.toString().trim()));
-                sb.setLength(0);
-            } else {
-                if (c == '(') {
-                    depth++;
-                }
-                if (c == ')') {
-                    depth--;
-                }
-                sb.append(c);
-            }
-        }
-        if (sb.length() > 0) {
-            path.add(subToken(sb.toString().trim()));
-        }
-        return path;
-    }
 
-    private String subToken(String s) {
-        if (s.startsWith("\"") && s.endsWith("\"") && s.length() >= 2) {
-            return s.substring(1, s.length() - 1);
-        }
-        return ExprEval.mstr(eval.eval(s).asNum());
-    }
+
+
 
     // ---- cursor exec -------------------------------------------------
 
@@ -592,7 +507,7 @@ public final class LineInterp {
                 // J12b indirect KILL: K @S2 → K A(1)
                 ref = eval.eval(ref.substring(1)).asStr();
             }
-            List<String> path = parseRef(ref);
+            List<String> path = refs.parseRef(ref);
             store.kill(path, path.get(0).startsWith("^"));
             c.skipWs();
             if (c.peek() == ',') {
@@ -686,7 +601,7 @@ public final class LineInterp {
         c.skipWs();
         String ref = c.readRefToken();
         if (!ref.isEmpty()) {
-            List<String> path = parseRef(ref);
+            List<String> path = refs.parseRef(ref);
             store.set(path, path.get(0).startsWith("^"), MValue.ofString(line));
         }
     }
@@ -755,8 +670,8 @@ public final class LineInterp {
         }
         c.next();
         String src = c.readRefToken();
-        List<String> dp = parseRef(dst);
-        List<String> sp = parseRef(src);
+        List<String> dp = refs.parseRef(dst);
+        List<String> sp = refs.parseRef(src);
         store.merge(dp, dp.get(0).startsWith("^"), sp, sp.get(0).startsWith("^"));
     }
 
