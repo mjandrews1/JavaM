@@ -54,55 +54,55 @@ final class LineDispatch {
             return;
         }
         if (up.equals("F") || up.equals("FOR")) {
-            fe.doFor(c);
+            LineCmds.doFor(fe, c);
             return;
         }
         if (up.equals("K") || up.equals("KILL")) {
-            fe.doKill(c);
+            LineCmds.doKill(fe, c);
             return;
         }
         if (up.equals("L") || up.equals("LOCK")) {
-            fe.doLock(c);
+            LineCmds.doLock(fe, c);
             return;
         }
         if (up.equals("O") || up.equals("OPEN")) {
-            fe.doOpen(c);
+            LineCmds.doOpen(fe, c);
             return;
         }
         if (up.equals("C") || up.equals("CLOSE")) {
-            fe.doClose(c);
+            LineCmds.doClose(fe, c);
             return;
         }
         if (up.equals("U") || up.equals("USE")) {
-            fe.doUse(c);
+            LineCmds.doUse(fe, c);
             return;
         }
         if (up.equals("R") || up.equals("READ")) {
-            fe.doRead(c);
+            LineCmds.doRead(fe, c);
             return;
         }
         if (up.equals("J") || up.equals("JOB")) {
-            fe.doJob(c);
+            LineCmds.doJob(fe, c);
             return;
         }
         if (up.equals("TSTART")) {
-            fe.doTStart(c);
+            LineCmds.doTStart(fe, c);
             return;
         }
         if (up.equals("TCOMMIT")) {
-            fe.doTCommit(c);
+            LineCmds.doTCommit(fe, c);
             return;
         }
         if (up.equals("TROLLBACK")) {
-            fe.doTRollback(c);
+            LineCmds.doTRollback(fe, c);
             return;
         }
         if (up.equals("N") || up.equals("NEW")) {
-            fe.doNew(c);
+            LineCmds.doNew(fe, c);
             return;
         }
         if (up.equals("M") || up.equals("MERGE")) {
-            fe.doMerge(c);
+            LineCmds.doMerge(fe, c);
             return;
         }
         if (up.startsWith("Q")) {

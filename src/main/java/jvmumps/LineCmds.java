@@ -205,4 +205,214 @@ final class LineCmds {
         }
         fe.test = true;
     }
+
+    static void doKill(LineInterp fe, Cursor c) {
+        while (!c.atEnd()) {
+            c.skipWs();
+            if (c.atEnd() || c.startsCommand()) {
+                break;
+            }
+            String ref = c.readRefToken();
+            if (ref.startsWith("@")) {
+                // J12b indirect KILL: K @S2 → K A(1)
+                ref = fe.eval.eval(ref.substring(1)).asStr();
+            }
+            List<String> path = fe.refs.parseRef(ref);
+            fe.store.kill(path, path.get(0).startsWith("^"));
+            c.skipWs();
+            if (c.peek() == ',') {
+                c.next();
+            } else {
+                break;
+            }
+        }
+    }
+    static void doJob(LineInterp fe, Cursor c) {
+        // J10: real JOB — spawn a child JVM running the snippet (async)
+        c.skipWs();
+        String code = c.readExpr();
+        if (code.startsWith("\"") && code.endsWith("\"") && code.length() >= 2) {
+            code = code.substring(1, code.length() - 1).replace("\"\"", "\"");
+        }
+        try {
+            String cp = System.getProperty("java.class.path");
+            ProcessBuilder pb = new ProcessBuilder(
+                    System.getProperty("java.home") + "/bin/java",
+                    "-cp", cp, "jvmumps.JobChild", code);
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+            pb.start();
+        } catch (Exception e) {
+            // fallback: local eval
+            fe.eval.eval(code);
+        }
+        fe.test = true;
+    }
+    static void doTStart(LineInterp fe, Cursor c) {
+        fe.tx.tstart();
+        c.skipCmd();
+    }
+    static void doTCommit(LineInterp fe, Cursor c) {
+        fe.tx.tcommit();
+        c.skipCmd();
+    }
+    static void doTRollback(LineInterp fe, Cursor c) {
+        fe.tx.trollback();
+        c.skipCmd();
+    }
+    static void doOpen(LineInterp fe, Cursor c) {
+        c.skipWs();
+        int n = 1;
+        String path = null;
+        String tok = c.readRefToken();
+        int colon = tok.indexOf(':');
+        if (colon > 0) {
+            n = (int) ExprEval.toNum(tok.substring(0, colon));
+            path = tok.substring(colon + 1);
+        } else if (c.peek() == ':') {
+            c.next();
+            n = (int) ExprEval.toNum(tok);
+            path = c.readExpr().replace("\"", "");
+        } else {
+            path = tok;
+        }
+        if (path != null) {
+            path = path.replace("\"", "");
+        }
+        if (path != null && !path.isEmpty()) {
+            fe.devices.open(n, path);
+        }
+    }
+    static void doClose(LineInterp fe, Cursor c) {
+        c.skipWs();
+        String tok = c.readRefToken();
+        int n = 1;
+        if (!tok.isEmpty()) {
+            n = (int) ExprEval.toNum(tok);
+        }
+        fe.devices.close(n);
+    }
+    static void doUse(LineInterp fe, Cursor c) {
+        c.skipWs();
+        String tok = c.readRefToken();
+        int n = tok.isEmpty() ? 0 : (int) ExprEval.toNum(tok);
+        fe.devices.use(n);
+    }
+    static void doRead(LineInterp fe, Cursor c) {
+        String line = fe.devices.readLine();
+        c.skipWs();
+        String ref = c.readRefToken();
+        if (!ref.isEmpty()) {
+            List<String> path = fe.refs.parseRef(ref);
+            fe.store.set(path, path.get(0).startsWith("^"), MValue.ofString(line));
+        }
+    }
+    static void doLock(LineInterp fe, Cursor c) {
+        while (!c.atEnd()) {
+            c.skipWs();
+            if (c.atEnd() || c.startsCommand()) {
+                break;
+            }
+            int sign = 1;
+            if (c.peek() == '+') {
+                c.next();
+                sign = 1;
+            } else if (c.peek() == '-') {
+                c.next();
+                sign = -1;
+            }
+            String ref = c.readRefToken();
+            if (ref.isEmpty()) {
+                break;
+            }
+            fe.tx.lock(ref, sign > 0);
+            c.skipWs();
+            if (c.peek() == ':') {
+                c.next();
+                c.readExpr();
+                c.skipWs();
+            }
+            if (c.peek() == ',') {
+                c.next();
+            } else {
+                break;
+            }
+        }
+        fe.test = true;
+    }
+    static void doNew(LineInterp fe, Cursor c) {
+        List<String> names = new ArrayList<>();
+        while (!c.atEnd()) {
+            c.skipWs();
+            if (c.atEnd() || c.startsCommand()) {
+                break;
+            }
+            String ref = c.readRefToken();
+            if (!ref.isEmpty() && !ref.startsWith("$")) {
+                names.add(ref);
+            }
+            c.skipWs();
+            if (c.peek() == ',') {
+                c.next();
+            } else {
+                break;
+            }
+        }
+        fe.store.newScope(names.isEmpty() ? null : names);
+    }
+    static void doMerge(LineInterp fe, Cursor c) {
+        c.skipWs();
+        String dst = c.readRefToken();
+        c.skipWs();
+        if (c.peek() != '=') {
+            return;
+        }
+        c.next();
+        String src = c.readRefToken();
+        List<String> dp = fe.refs.parseRef(dst);
+        List<String> sp = fe.refs.parseRef(src);
+        fe.store.merge(dp, dp.get(0).startsWith("^"), sp, sp.get(0).startsWith("^"));
+    }
+    static void doFor(LineInterp fe, Cursor c) {
+        c.skipWs();
+        String var = c.readRefToken();
+        c.skipWs();
+        if (c.peek() != '=') {
+            return;
+        }
+        c.next();
+        // spec is first, second, third or list
+        String spec = c.readForSpec();
+        String body = c.rest().trim();
+        c.skipToEnd();
+        if (spec.contains(":")) {
+            String[] bits = spec.split(":");
+            double i = fe.eval.eval(bits[0]).asNum();
+            double step = bits.length > 1 ? fe.eval.eval(bits[1]).asNum() : 1;
+            double limit = bits.length > 2 ? fe.eval.eval(bits[2]).asNum() : Double.POSITIVE_INFINITY;
+            if (step == 0) {
+                step = 1;
+            }
+            int guard = 0;
+            while ((step > 0 ? i <= limit : i >= limit) && !fe.quit && guard++ < 200000) {
+                fe.store.set(List.of(var), false, MValue.ofNumber(i));
+                if (!body.isEmpty()) {
+                    LineExec.exec(fe, body);
+                }
+                i += step;
+            }
+        } else {
+            int guard = 0;
+            for (String item : spec.split(",")) {
+                if (fe.quit || guard++ > 200000) {
+                    break;
+                }
+                fe.store.set(List.of(var), false, fe.eval.eval(item));
+                if (!body.isEmpty()) {
+                    LineExec.exec(fe, body);
+                }
+            }
+        }
+        fe.test = true;
+    }
 }

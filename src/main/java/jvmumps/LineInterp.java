@@ -20,7 +20,7 @@ public final class LineInterp {
     boolean quit = false;
     int vx = 0;
     int vy = 0;
-    private final LineDevices devices = new LineDevices();
+    final LineDevices devices = new LineDevices();
     final LineTxLocks tx;
     LineRefs refs;
 
@@ -50,7 +50,7 @@ public final class LineInterp {
                 LineExec.exec(this, line);
             }
         } catch (MError e) {
-            return e.getMessage() + "\n";
+            return LineErrors.report(e);
         }
         return out.toString();
     }
@@ -60,16 +60,6 @@ public final class LineInterp {
         quit = false;
         test = true;
     }
-
-    // ---- refs -------------------------------------------------------
-
-
-
-
-
-    // ---- cursor exec -------------------------------------------------
-
-
 
     /**
      * J14: run one command; on MError fire $ETRAP/$ZTRAP if set.
@@ -349,227 +339,31 @@ public final class LineInterp {
         return s.substring(0, start) + v + s.substring(end);
     }
 
-    void doKill(Cursor c) {
-        while (!c.atEnd()) {
-            c.skipWs();
-            if (c.atEnd() || c.startsCommand()) {
-                break;
-            }
-            String ref = c.readRefToken();
-            if (ref.startsWith("@")) {
-                // J12b indirect KILL: K @S2 → K A(1)
-                ref = eval.eval(ref.substring(1)).asStr();
-            }
-            List<String> path = refs.parseRef(ref);
-            store.kill(path, path.get(0).startsWith("^"));
-            c.skipWs();
-            if (c.peek() == ',') {
-                c.next();
-            } else {
-                break;
-            }
-        }
-    }
 
-    void doJob(Cursor c) {
-        // J10: real JOB — spawn a child JVM running the snippet (async)
-        c.skipWs();
-        String code = c.readExpr();
-        if (code.startsWith("\"") && code.endsWith("\"") && code.length() >= 2) {
-            code = code.substring(1, code.length() - 1).replace("\"\"", "\"");
-        }
-        try {
-            String cp = System.getProperty("java.class.path");
-            ProcessBuilder pb = new ProcessBuilder(
-                    System.getProperty("java.home") + "/bin/java",
-                    "-cp", cp, "jvmumps.JobChild", code);
-            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
-            pb.start();
-        } catch (Exception e) {
-            // fallback: local eval
-            eval.eval(code);
-        }
-        test = true;
-    }
 
-    void doTStart(Cursor c) {
-        tx.tstart();
-        c.skipCmd();
-    }
 
-    void doTCommit(Cursor c) {
-        tx.tcommit();
-        c.skipCmd();
-    }
 
-    void doTRollback(Cursor c) {
-        tx.trollback();
-        c.skipCmd();
-    }
 
-    void doOpen(Cursor c) {
-        c.skipWs();
-        int n = 1;
-        String path = null;
-        String tok = c.readRefToken();
-        int colon = tok.indexOf(':');
-        if (colon > 0) {
-            n = (int) ExprEval.toNum(tok.substring(0, colon));
-            path = tok.substring(colon + 1);
-        } else if (c.peek() == ':') {
-            c.next();
-            n = (int) ExprEval.toNum(tok);
-            path = c.readExpr().replace("\"", "");
-        } else {
-            path = tok;
-        }
-        if (path != null) {
-            path = path.replace("\"", "");
-        }
-        if (path != null && !path.isEmpty()) {
-            devices.open(n, path);
-        }
-    }
 
-    void doClose(Cursor c) {
-        c.skipWs();
-        String tok = c.readRefToken();
-        int n = 1;
-        if (!tok.isEmpty()) {
-            n = (int) ExprEval.toNum(tok);
-        }
-        devices.close(n);
-    }
 
-    void doUse(Cursor c) {
-        c.skipWs();
-        String tok = c.readRefToken();
-        int n = tok.isEmpty() ? 0 : (int) ExprEval.toNum(tok);
-        devices.use(n);
-    }
 
-    void doRead(Cursor c) {
-        String line = devices.readLine();
-        c.skipWs();
-        String ref = c.readRefToken();
-        if (!ref.isEmpty()) {
-            List<String> path = refs.parseRef(ref);
-            store.set(path, path.get(0).startsWith("^"), MValue.ofString(line));
-        }
-    }
 
-    void doLock(Cursor c) {
-        while (!c.atEnd()) {
-            c.skipWs();
-            if (c.atEnd() || c.startsCommand()) {
-                break;
-            }
-            int sign = 1;
-            if (c.peek() == '+') {
-                c.next();
-                sign = 1;
-            } else if (c.peek() == '-') {
-                c.next();
-                sign = -1;
-            }
-            String ref = c.readRefToken();
-            if (ref.isEmpty()) {
-                break;
-            }
-            tx.lock(ref, sign > 0);
-            c.skipWs();
-            if (c.peek() == ':') {
-                c.next();
-                c.readExpr();
-                c.skipWs();
-            }
-            if (c.peek() == ',') {
-                c.next();
-            } else {
-                break;
-            }
-        }
-        test = true;
-    }
 
-    void doNew(Cursor c) {
-        List<String> names = new ArrayList<>();
-        while (!c.atEnd()) {
-            c.skipWs();
-            if (c.atEnd() || c.startsCommand()) {
-                break;
-            }
-            String ref = c.readRefToken();
-            if (!ref.isEmpty() && !ref.startsWith("$")) {
-                names.add(ref);
-            }
-            c.skipWs();
-            if (c.peek() == ',') {
-                c.next();
-            } else {
-                break;
-            }
-        }
-        store.newScope(names.isEmpty() ? null : names);
-    }
 
-    void doMerge(Cursor c) {
-        c.skipWs();
-        String dst = c.readRefToken();
-        c.skipWs();
-        if (c.peek() != '=') {
-            return;
-        }
-        c.next();
-        String src = c.readRefToken();
-        List<String> dp = refs.parseRef(dst);
-        List<String> sp = refs.parseRef(src);
-        store.merge(dp, dp.get(0).startsWith("^"), sp, sp.get(0).startsWith("^"));
-    }
 
-    void doFor(Cursor c) {
-        c.skipWs();
-        String var = c.readRefToken();
-        c.skipWs();
-        if (c.peek() != '=') {
-            return;
-        }
-        c.next();
-        // spec is first, second, third or list
-        String spec = c.readForSpec();
-        String body = c.rest().trim();
-        c.skipToEnd();
-        if (spec.contains(":")) {
-            String[] bits = spec.split(":");
-            double i = eval.eval(bits[0]).asNum();
-            double step = bits.length > 1 ? eval.eval(bits[1]).asNum() : 1;
-            double limit = bits.length > 2 ? eval.eval(bits[2]).asNum() : Double.POSITIVE_INFINITY;
-            if (step == 0) {
-                step = 1;
-            }
-            int guard = 0;
-            while ((step > 0 ? i <= limit : i >= limit) && !quit && guard++ < 200000) {
-                store.set(List.of(var), false, MValue.ofNumber(i));
-                if (!body.isEmpty()) {
-                    LineExec.exec(this, body);
-                }
-                i += step;
-            }
-        } else {
-            int guard = 0;
-            for (String item : spec.split(",")) {
-                if (quit || guard++ > 200000) {
-                    break;
-                }
-                store.set(List.of(var), false, eval.eval(item));
-                if (!body.isEmpty()) {
-                    LineExec.exec(this, body);
-                }
-            }
-        }
-        test = true;
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // ---- cursor ------------------------------------------------------
 
