@@ -266,6 +266,13 @@ public final class MRuntime {
 
     /** Extrinsic $$fn(args) — run via LineInterp-free: use stored program labels. */
     public jvmumps.MValue callExtrinsic(String name, jvmumps.MValue[] argv) {
+        if (name != null && name.equalsIgnoreCase("PEMDAS")) {
+            java.util.List<jvmumps.MValue> args = new java.util.ArrayList<>();
+            if (argv != null) {
+                for (jvmumps.MValue v : argv) args.add(v);
+            }
+            return jvmumps.PemdasEval.call(args);
+        }
         // delegate to MFrontend+IrMachine on a synthetic DO form if we have a routine
         if (extrinsicHandler != null) return extrinsicHandler.call(name, argv);
         throw new jvmumps.MError("Extrinsic $$" + name + " not available");
