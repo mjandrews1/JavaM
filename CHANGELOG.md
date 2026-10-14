@@ -7,7 +7,7 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
-## [0.3.0] — 2026-10-13
+## [0.3.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0) — 2026-10-13
 
 **GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0
 
