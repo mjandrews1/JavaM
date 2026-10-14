@@ -230,4 +230,4 @@ man mjvm
 | M8 bench + targets + results | done (`docs/mjvm-perf.md`) |
 | M9 docs + packaging | this section · `docs/INSTALL.md` · `man/` |
 
-More detail: `docs/INSTALL.md` (install/uninstall) · `man/mjvm.1` · `man/jvmumps.7` · `docs/mjvm-perf.md`.
+More detail: `docs/INSTALL.md` (install/uninstall) · `man/mjvm.1` · `man/jvmumps.7` · `docs/mjvm-perf.md` · **`docs/SQLSTORE-LOCKS.md`** (lock / file-record semantics).
