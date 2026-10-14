@@ -24,41 +24,7 @@ public final class LineInterp {
     final LineTxLocks tx;
     LineRefs refs;
 
-    // ---- J13 routine state ----
-    static final class RtLine {
-        final String tag; // null = untitled
-        final List<String> formals; // null = none
-        final String body;
-
-        RtLine(String tag, List<String> formals, String body) {
-            this.tag = tag;
-            this.formals = formals;
-            this.body = body;
-        }
-    }
-
-    static final class Frame {
-        final int retLine;
-        final String retRest;
-        final boolean extrinsic;
-        final List<String> savedFormals;
-
-        Frame(int retLine, String retRest, boolean extrinsic, List<String> savedFormals) {
-            this.retLine = retLine;
-            this.retRest = retRest;
-            this.extrinsic = extrinsic;
-            this.savedFormals = savedFormals;
-        }
-    }
-
-    List<RtLine> prog;
-    int pc;
-    String pendingRest;
-    final Deque<Frame> doStack = new ArrayDeque<>();
-    final Map<String, Integer> tags = new LinkedHashMap<>();
-    MValue extrinsicValue = MValue.EMPTY;
-    boolean routineMode = false;
-    boolean trapFiring = false;
+    final LineState state = new LineState();
 
     public LineInterp() {
         this(new MStore());
@@ -75,7 +41,6 @@ public final class LineInterp {
         out.setLength(0);
         quit = false;
         test = true;
-        // $X/$Y persist across commands on the line
         eval.vx = vx;
         eval.vy = vy;
         try {
@@ -85,7 +50,6 @@ public final class LineInterp {
                 LineExec.exec(this, line);
             }
         } catch (MError e) {
-            // RSM direct-mode: error text is the result (C02)
             return e.getMessage() + "\n";
         }
         return out.toString();

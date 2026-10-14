@@ -27,7 +27,7 @@ final class LineExec {
             return true;
         } catch (MError e) {
             String trap = !fe.eval.etrap.isEmpty() ? fe.eval.etrap : fe.eval.ztrap;
-            if (trap.isEmpty() || fe.trapFiring) {
+            if (trap.isEmpty() || fe.state.trapFiring) {
                 throw e;
             }
             // abandon the rest of the failed command
@@ -36,7 +36,7 @@ final class LineExec {
             } catch (RuntimeException ignored) {
                 c.skipToEnd();
             }
-            fe.trapFiring = true;
+            fe.state.trapFiring = true;
             try {
                 Cursor tc = new Cursor(trap);
                 while (!tc.atEnd() && !fe.quit) {
@@ -53,7 +53,7 @@ final class LineExec {
                     }
                 }
             } finally {
-                fe.trapFiring = false;
+                fe.state.trapFiring = false;
             }
             return false;
         }
