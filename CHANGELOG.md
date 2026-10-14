@@ -27,7 +27,7 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
-## [0.9.x] — 2026-10-11 (path / quality)
+## [0.2.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.2.0) — 2026-10-11 (path / quality)
 
 ### Added
 - OSV dependency advisory scan in CI for vendored jars (`#65`).
@@ -40,7 +40,7 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
-## [131/8/0] — 2026-10-09/10 (peer target)
+## [0.1.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.1.0) — 2026-10-09/10 (peer target **131/8/0**)
 
 Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 
@@ -57,7 +57,7 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 
 ---
 
-## [mJVM M0–M9] — 2026-10 (JVM-native runtime)
+## [0.0.2](https://github.com/mjandrews1/JavaM/releases/tag/v0.0.2) — 2026-10 (mJVM **M0–M9** JVM-native runtime)
 
 ### Added
 - M0–M2 StoreApi + M frontend + IrMachine + ClassEmitter + CLI.
@@ -68,7 +68,7 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 
 ---
 
-## [Charter / suite] — 2026-10 early
+## [0.0.1](https://github.com/mjandrews1/JavaM/releases/tag/v0.0.1) — 2026-10 early (**Charter** / suite)
 
 ### Added
 - Charter: JvMumps + mJVM = **complete M** (RSM-equivalent scope; capability parity, not file-level port).
@@ -96,3 +96,7 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 Every user-visible PR should append here (PR template checkbox).
 
 [0.3.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0
+[0.2.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.2.0
+[0.1.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.1.0
+[0.0.2]: https://github.com/mjandrews1/JavaM/releases/tag/v0.0.2
+[0.0.1]: https://github.com/mjandrews1/JavaM/releases/tag/v0.0.1
