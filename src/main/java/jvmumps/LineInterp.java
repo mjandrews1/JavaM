@@ -79,10 +79,10 @@ public final class LineInterp {
         eval.vx = vx;
         eval.vy = vy;
         try {
-            if (looksLikeRoutine(line)) {
+            if (LineRoutine.looksLikeRoutine(line)) {
                 LineRoutine.runRoutine(this, line);
             } else {
-                exec(line);
+                LineExec.exec(this, line);
             }
         } catch (MError e) {
             // RSM direct-mode: error text is the result (C02)
@@ -105,130 +105,19 @@ public final class LineInterp {
 
     // ---- cursor exec -------------------------------------------------
 
-    private void exec(String line) {
-        // Physical newlines separate direct-mode commands
-        for (String part : line.split("\n", -1)) {
-            Cursor c = new Cursor(part);
-            while (!c.atEnd() && !quit) {
-                int before = c.i;
-                if (!execOneTrapped(c) && !c.atEnd() && c.i == before) {
-                    c.next();
-                }
-            }
-        }
-    }
+
 
     /**
      * J14: run one command; on MError fire $ETRAP/$ZTRAP if set.
      * Returns true if the command ran without a trap-handled error.
      */
-    boolean execOneTrapped(Cursor c) {
-        try {
-            int before = c.i;
-            LineDispatch.execOne(this, c);
-            return true;
-        } catch (MError e) {
-            String trap = !eval.etrap.isEmpty() ? eval.etrap : eval.ztrap;
-            if (trap.isEmpty() || trapFiring) {
-                throw e;
-            }
-            // abandon the rest of the failed command
-            try {
-                c.skipCmd();
-            } catch (RuntimeException ignored) {
-                c.skipToEnd();
-            }
-            trapFiring = true;
-            try {
-                Cursor tc = new Cursor(trap);
-                while (!tc.atEnd() && !quit) {
-                    int b = tc.i;
-                    try {
-                        LineDispatch.execOne(this, tc);
-                    } catch (MError e2) {
-                        if (tc.i == b) {
-                            tc.next();
-                        }
-                    }
-                    if (tc.i == b && !tc.atEnd()) {
-                        tc.next();
-                    }
-                }
-            } finally {
-                trapFiring = false;
-            }
-            return false;
-        }
-    }
+
 
     // ---- J13 routines -------------------------------------------------
 
-    static boolean looksLikeRoutine(String code) {
-        if (code.indexOf('\n') < 0) {
-            return false;
-        }
-        for (String raw : code.split("\n", -1)) {
-            if (raw.isEmpty() || raw.startsWith(" ") || raw.startsWith(".") || raw.startsWith("\t")) {
-                continue;
-            }
-            int i = 0;
-            while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) {
-                i++;
-            }
-            if (i == 0) {
-                continue;
-            }
-            String name = raw.substring(0, i);
-            char nxt = i < raw.length() ? raw.charAt(i) : ' ';
-            boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
-            if (tagShape && !Cursor.isCmdWord(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
-    static List<RtLine> parseRoutine(String code) {
-        List<RtLine> lines = new ArrayList<>();
-        for (String raw : code.split("\n", -1)) {
-            String tag = null;
-            List<String> formals = null;
-            String body = raw;
-            if (!raw.isEmpty() && !raw.startsWith(" ") && !raw.startsWith(".") && !raw.startsWith("\t")) {
-                int i = 0;
-                while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) {
-                    i++;
-                }
-                String name = i > 0 ? raw.substring(0, i) : "";
-                if (!name.isEmpty()) {
-                    char nxt = i < raw.length() ? raw.charAt(i) : ' ';
-                    boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
-                    if (tagShape && !Cursor.isCmdWord(name)) {
-                        tag = name;
-                        if (i < raw.length() && raw.charAt(i) == '(') {
-                            int j = raw.indexOf(')', i);
-                            if (j > i) {
-                                formals = new ArrayList<>();
-                                for (String f : raw.substring(i + 1, j).split(",")) {
-                                    String t = f.trim();
-                                    if (!t.isEmpty()) {
-                                        formals.add(t);
-                                    }
-                                }
-                                i = j + 1;
-                            }
-                        }
-                        while (i < raw.length() && raw.charAt(i) == ' ') {
-                            i++;
-                        }
-                        body = raw.substring(i);
-                    }
-                }
-            }
-            lines.add(new RtLine(tag, formals, body));
-        }
-        return lines;
-    }
+
+
 
 
 
@@ -699,7 +588,7 @@ public final class LineInterp {
             while ((step > 0 ? i <= limit : i >= limit) && !quit && guard++ < 200000) {
                 store.set(List.of(var), false, MValue.ofNumber(i));
                 if (!body.isEmpty()) {
-                    exec(body);
+                    LineExec.exec(this, body);
                 }
                 i += step;
             }
@@ -711,7 +600,7 @@ public final class LineInterp {
                 }
                 store.set(List.of(var), false, eval.eval(item));
                 if (!body.isEmpty()) {
-                    exec(body);
+                    LineExec.exec(this, body);
                 }
             }
         }

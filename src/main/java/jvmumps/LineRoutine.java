@@ -5,10 +5,77 @@ import java.util.List;
 
 /** Routine / DO / GOTO / QUIT / extrinsic runner for {@link LineInterp} (deep split, #58). */
 final class LineRoutine {
+        static java.util.List<LineInterp.RtLine> parseRoutine(String code) {
+            java.util.List<LineInterp.RtLine> lines = new ArrayList<>();
+            for (String raw : code.split("\n", -1)) {
+                String tag = null;
+                List<String> formals = null;
+                String body = raw;
+                if (!raw.isEmpty() && !raw.startsWith(" ") && !raw.startsWith(".") && !raw.startsWith("\t")) {
+                    int i = 0;
+                    while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) {
+                        i++;
+                    }
+                    String name = i > 0 ? raw.substring(0, i) : "";
+                    if (!name.isEmpty()) {
+                        char nxt = i < raw.length() ? raw.charAt(i) : ' ';
+                        boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
+                        if (tagShape && !Cursor.isCmdWord(name)) {
+                            tag = name;
+                            if (i < raw.length() && raw.charAt(i) == '(') {
+                                int j = raw.indexOf(')', i);
+                                if (j > i) {
+                                    formals = new ArrayList<>();
+                                    for (String f : raw.substring(i + 1, j).split(",")) {
+                                        String t = f.trim();
+                                        if (!t.isEmpty()) {
+                                            formals.add(t);
+                                        }
+                                    }
+                                    i = j + 1;
+                                }
+                            }
+                            while (i < raw.length() && raw.charAt(i) == ' ') {
+                                i++;
+                            }
+                            body = raw.substring(i);
+                        }
+                    }
+                }
+                lines.add(new LineInterp.RtLine(tag, formals, body));
+            }
+            return lines;
+        }
+
+        static boolean looksLikeRoutine(String code) {
+            if (code.indexOf('\n') < 0) {
+                return false;
+            }
+            for (String raw : code.split("\n", -1)) {
+                if (raw.isEmpty() || raw.startsWith(" ") || raw.startsWith(".") || raw.startsWith("\t")) {
+                    continue;
+                }
+                int i = 0;
+                while (i < raw.length() && (Character.isLetterOrDigit(raw.charAt(i)) || raw.charAt(i) == '%')) {
+                    i++;
+                }
+                if (i == 0) {
+                    continue;
+                }
+                String name = raw.substring(0, i);
+                char nxt = i < raw.length() ? raw.charAt(i) : ' ';
+                boolean tagShape = (nxt == ' ' || nxt == '(' || i == raw.length());
+                if (tagShape && !Cursor.isCmdWord(name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
     private LineRoutine() {}
 
     static void runRoutine(LineInterp fe, String code) {
-        fe.prog = fe.parseRoutine(code);
+        fe.prog = parseRoutine(code);
         fe.tags.clear();
         for (int i = 0; i < fe.prog.size(); i++) {
             String t = fe.prog.get(i).tag;
