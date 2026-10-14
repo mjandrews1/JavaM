@@ -11,6 +11,7 @@ import java.sql.Statement;
  * J7 store persistence — SQLite peer of PyMumps W5.
  * Table: nodes(name, subs, val, isnum) where subs is a JSON-ish array string.
  */
+/** Shared SQLite helpers for {@link SqlStore}. */
 public final class StoreDb {
     static final String URL_PREFIX = "jdbc:sqlite:";
 

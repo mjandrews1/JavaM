@@ -3,13 +3,16 @@
 ifeq ($(origin JAVA_HOME),environment)
   JAVAC := $(JAVA_HOME)/bin/javac
   JAVA  := $(JAVA_HOME)/bin/java
+  JAVADOC := $(JAVA_HOME)/bin/javadoc
 else ifneq ($(wildcard /opt/homebrew/opt/openjdk/bin/javac),)
   JAVA_HOME ?= /opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home
   JAVAC := $(JAVA_HOME)/bin/javac
   JAVA  := $(JAVA_HOME)/bin/java
+  JAVADOC := $(JAVA_HOME)/bin/javadoc
 else
   JAVAC := javac
   JAVA  := java
+  JAVADOC := javadoc
 endif
 RELEASE ?= 21
 OUT   := build
@@ -64,10 +67,13 @@ itest: all
 	done; \
 	echo "ITEST OK $(words $(ITEST_CLASSES))"
 
+javadoc: all
+	$(JAVADOC) --release 21 -d docs/javadoc -cp $(CP) -quiet $$(find src/main/java -name '*.java')
+
 run: all
 	$(JAVA) -cp $(CP) jvmumps.CorpusRunner $(CORPUS)
 
-.PHONY: all smoke run clean mjvm bench install uninstall man dist
+.PHONY: all smoke run clean javadoc mjvm bench install uninstall man dist
 
 mjvm: all
 	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/main/java/mjvm/*/*.java

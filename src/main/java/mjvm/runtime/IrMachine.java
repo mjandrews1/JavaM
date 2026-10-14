@@ -10,6 +10,7 @@ import mjvm.ir.Ir;
  * This is the mJVM runtime core: both the in-process IR machine (M2
  * straight-line) and generated classes route through the same opcodes.
  */
+/** Interpreter for {@link mjvm.ir.Ir} programs (parity path vs ClassEmitter). */
 public final class IrMachine {
     static final class H {
         static java.util.List<String> splitTop(String text) {
