@@ -12,7 +12,14 @@ import java.util.List;
  * Live SQLite backend for the M engine (J7).
  * Key: name + SEP + sub + SEP + …  for prefix scans.
  */
-/** SQLite-backed {@link StoreApi} (WAL; tests use temp files). */
+/**
+ * SQLite-backed {@link StoreApi} (WAL; tests use temp files).
+ *
+ * <p>Durable JavaM/mJVM store for integration ({@code Sql*Smoke}, {@code itest}).
+ * RSM remains the <b>file-backed production M oracle</b> ({@code rsm.dat} /
+ * global buffers) — not replaced by SQLite. Cross-process locks use
+ * {@code mlocks}; see also {@link MStore} for the ephemeral backend.
+ */
 public final class SqlStore implements StoreApi {
     static final char SEP = 1;
 

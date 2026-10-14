@@ -11,7 +11,15 @@ import java.util.Map;
  * Keys are name + subscript strings; empty value means node with no data
  * but possibly children ($DATA 10).
  */
-/** In-memory {@link StoreApi} (direct-mode default; no persistence). */
+/**
+ * In-memory {@link StoreApi} (direct-mode default; no persistence).
+ *
+ * <p><b>Not the M production model.</b> RSM (the oracle) is always
+ * <b>file-backed</b> ({@code RSM_DBFILE} / {@code rsm.dat} with global
+ * buffers and database blocks). {@link MStore} is a JavaM/mJVM test and
+ * direct-mode backend only; for oracle-aligned persistence use
+ * {@link SqlStore} (integration) or live RSM.
+ */
 public final class MStore implements StoreApi {
     public static final class Node {
         MValue value = MValue.EMPTY;
