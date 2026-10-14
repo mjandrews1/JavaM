@@ -20,15 +20,8 @@ public final class LineInterp {
     private boolean quit = false;
     private int vx = 0;
     private int vy = 0;
-    private final java.util.Set<String> locks = new java.util.HashSet<>();
-    private final java.util.Map<Integer, String> devPath = new java.util.HashMap<>();
-    private final java.util.Map<Integer, java.util.List<String>> devLines = new java.util.HashMap<>();
-    private final java.util.Map<Integer, Integer> devIdx = new java.util.HashMap<>();
-    private int io = 0;
-    private int tlevel = 0;
-    /** Per-level undo stack (ISO: TROLLBACK undoes only the current transaction level). */
-    private final java.util.List<java.util.List<Object[]>> txUndo = new ArrayList<>();
-    private final java.util.Map<String, MValue> undoVals = new java.util.HashMap<>();
+    private final LineDevices devices = new LineDevices();
+    private final LineTxLocks tx;
 
     // ---- J13 routine state ----
     static final class RtLine {
@@ -72,6 +65,7 @@ public final class LineInterp {
 
     public LineInterp(StoreApi store) {
         this.store = store;
+        this.tx = new LineTxLocks(store);
         this.eval = new ExprEval(new ExprEval.Env() {
             @Override
             public MValue get(String name) {
@@ -917,9 +911,7 @@ public final class LineInterp {
             if (!lhs.startsWith("$")) {
                 List<String> path = parseRef(lhs);
                 boolean glob = path.get(0).startsWith("^");
-                if (tlevel > 0) {
-                    txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
-                }
+                tx.recordUndo(path, store.get(path, glob));
                 store.set(path, glob, v);
             } else if (lhs.equalsIgnoreCase("$ETRAP")) {
                 eval.etrap = v.asStr();
@@ -946,9 +938,7 @@ public final class LineInterp {
                     List<String> path = parseRef(ref);
                     boolean glob = path.get(0).startsWith("^");
                     String cur = store.get(path, glob).asStr();
-                    if (tlevel > 0) {
-                        txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
-                    }
+                    tx.recordUndo(path, store.get(path, glob));
                     store.set(path, glob, MValue.ofString(setExtractOf(cur, from, to, newv)));
                 }
             } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
@@ -999,9 +989,7 @@ public final class LineInterp {
                         List<String> path = parseRef(ref);
                         boolean glob = path.get(0).startsWith("^");
                         String cur = store.get(path, glob).asStr();
-                        if (tlevel > 0) {
-                            txUndo.get(txUndo.size() - 1).add(new Object[] {path, store.get(path, glob)});
-                        }
+                        tx.recordUndo(path, store.get(path, glob));
                         store.set(path, glob, MValue.ofString(setPieceOf(cur, del, from, to, newv)));
                     }
                 }
@@ -1150,42 +1138,17 @@ public final class LineInterp {
     }
 
     private void doTStart(Cursor c) {
-        tlevel++;
-        txUndo.add(new ArrayList<>());
+        tx.tstart();
         c.skipCmd();
     }
 
     private void doTCommit(Cursor c) {
-        if (tlevel > 0) {
-            tlevel--;
-            // ISO: nested commit stays provisional relative to the outer level —
-            // fold this level's undo into the parent so an outer TROLLBACK still undoes it.
-            List<Object[]> top = txUndo.remove(txUndo.size() - 1);
-            if (!txUndo.isEmpty()) {
-                txUndo.get(txUndo.size() - 1).addAll(top);
-            }
-        }
-        undoVals.clear();
+        tx.tcommit();
         c.skipCmd();
     }
 
     private void doTRollback(Cursor c) {
-        if (tlevel > 0) {
-            tlevel--;
-            List<Object[]> top = txUndo.remove(txUndo.size() - 1);
-            for (int i = top.size() - 1; i >= 0; i--) {
-                Object[] u = top.get(i);
-                @SuppressWarnings("unchecked")
-                List<String> path = (List<String>) u[0];
-                MValue old = (MValue) u[1];
-                if (old == null) {
-                    store.kill(path, path.get(0).startsWith("^"));
-                } else {
-                    store.set(path, path.get(0).startsWith("^"), old);
-                }
-            }
-        }
-        undoVals.clear();
+        tx.trollback();
         c.skipCmd();
     }
 
@@ -1209,18 +1172,7 @@ public final class LineInterp {
             path = path.replace("\"", "");
         }
         if (path != null && !path.isEmpty()) {
-            try {
-                java.util.List<String> lines = new java.util.ArrayList<>();
-                for (String ln : java.nio.file.Files.readAllLines(java.nio.file.Path.of(path))) {
-                    lines.add(ln);
-                }
-                devPath.put(n, path);
-                devLines.put(n, lines);
-                devIdx.put(n, 0);
-                io = n;
-            } catch (Exception e) {
-                throw new MError("OPEN failed: " + e);
-            }
+            devices.open(n, path);
         }
     }
 
@@ -1231,41 +1183,27 @@ public final class LineInterp {
         if (!tok.isEmpty()) {
             n = (int) ExprEval.toNum(tok);
         }
-        devPath.remove(n);
-        devLines.remove(n);
-        devIdx.remove(n);
-        if (io == n) {
-            io = 0;
-        }
+        devices.close(n);
     }
 
     private void doUse(Cursor c) {
         c.skipWs();
         String tok = c.readRefToken();
         int n = tok.isEmpty() ? 0 : (int) ExprEval.toNum(tok);
-        if (n != 0 && !devPath.containsKey(n)) {
-            throw new MError("USE unopened device");
-        }
-        io = n;
+        devices.use(n);
     }
 
     private void doRead(Cursor c) {
-        String line = "";
-        java.util.List<String> lines = devLines.get(io);
-        Integer idx = devIdx.get(io);
-        if (lines != null && idx != null && idx < lines.size()) {
-            line = lines.get(idx);
-            devIdx.put(io, idx + 1);
-        }
+        String line = devices.readLine();
         c.skipWs();
         String ref = c.readRefToken();
         if (!ref.isEmpty()) {
-            store.set(parseRef(ref), parseRef(ref).get(0).startsWith("^"), MValue.ofString(line));
+            List<String> path = parseRef(ref);
+            store.set(path, path.get(0).startsWith("^"), MValue.ofString(line));
         }
     }
 
     private void doLock(Cursor c) {
-        // LOCK [+|-]ref[,ref…][:timeout]  — always succeed, track set
         while (!c.atEnd()) {
             c.skipWs();
             if (c.atEnd() || c.startsCommand()) {
@@ -1283,17 +1221,7 @@ public final class LineInterp {
             if (ref.isEmpty()) {
                 break;
             }
-            String key = ref;
-            String pid = Long.toString(ProcessHandle.current().pid());
-            if (sign > 0) {
-                long timeout = 0;
-                // timeout already consumed below if :n
-                store.lockAcquire(key, pid, 50);
-                locks.add(key);
-            } else {
-                store.lockRelease(key, pid);
-                locks.remove(key);
-            }
+            tx.lock(ref, sign > 0);
             c.skipWs();
             if (c.peek() == ':') {
                 c.next();
@@ -1389,284 +1317,5 @@ public final class LineInterp {
 
     // ---- cursor ------------------------------------------------------
 
-    static final class Cursor {
-        final String s;
-        int i = 0;
-        boolean elsePending = false;
 
-        Cursor(String s) {
-            this.s = s;
-        }
-
-        boolean atEnd() {
-            return i >= s.length();
-        }
-
-        char peek() {
-            return atEnd() ? '\0' : s.charAt(i);
-        }
-
-        char next() {
-            return s.charAt(i++);
-        }
-
-        void skipWs() {
-            while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
-                i++;
-            }
-        }
-
-        void skipToEnd() {
-            i = s.length();
-        }
-
-        /** Skip commands until ELSE or end (false IF). */
-        void skipUntilElse() {
-            while (i < s.length()) {
-                skipWs();
-                if (atEnd()) {
-                    return;
-                }
-                if (startsElse()) {
-                    return;
-                }
-                skipOneArg();
-            }
-        }
-
-        boolean startsElse() {
-            int j = i;
-            while (j < s.length() && s.charAt(j) == ' ') {
-                j++;
-            }
-            if (j >= s.length() || !Character.isLetter(s.charAt(j))) {
-                return false;
-            }
-            int k = j;
-            while (k < s.length() && Character.isLetter(s.charAt(k))) {
-                k++;
-            }
-            String w = s.substring(j, k);
-            if (k < s.length() && s.charAt(k) != ' ' && s.charAt(k) != ':') {
-                return false;
-            }
-            return w.equalsIgnoreCase("E") || w.equalsIgnoreCase("ELSE");
-        }
-
-        /** Consume one command's arguments (up to next command name). */
-        void skipOneArg() {
-            String name = readCmdName();
-            if (name.isEmpty()) {
-                skipToEnd();
-                return;
-            }
-            if (peek() == ':') {
-                next();
-                readExpr();
-            }
-            skipCmd();
-        }
-
-        void markElse() {
-            elsePending = true;
-        }
-
-        String rest() {
-            return s.substring(i);
-        }
-
-        String readCmdName() {
-            skipWs();
-            if (atEnd()) {
-                return "";
-            }
-            int st = i;
-            if (Character.isLetter(s.charAt(i))) {
-                while (i < s.length() && Character.isLetter(s.charAt(i))) {
-                    i++;
-                }
-                return s.substring(st, i);
-            }
-            return "";
-        }
-
-        boolean startsCommand() {
-            int j = i;
-            while (j < s.length() && s.charAt(j) == ' ') {
-                j++;
-            }
-            if (j >= s.length()) {
-                return false;
-            }
-            if (!Character.isLetter(s.charAt(j))) {
-                return false;
-            }
-            int k = j;
-            while (k < s.length() && Character.isLetter(s.charAt(k))) {
-                k++;
-            }
-            String w = s.substring(j, k);
-            if (k >= s.length()) {
-                return false;
-            }
-            // command name then space (or colon for postcond)
-            if (s.charAt(k) == ' ' || s.charAt(k) == ':') {
-                return isCmdWord(w);
-            }
-            return false;
-        }
-
-        static boolean isCmdWord(String w) {
-            String up = w.toUpperCase();
-            if (up.equals("SET") || up.equals("WRITE") || up.equals("IF") || up.equals("ELSE")
-                    || up.equals("FOR") || up.equals("KILL") || up.equals("NEW") || up.equals("MERGE")
-                    || up.equals("QUIT") || up.equals("HALT") || up.equals("HANG")
-                    || up.equals("TSTART") || up.equals("TCOMMIT") || up.equals("TROLLBACK")
-                    || up.equals("LOCK") || up.equals("OPEN") || up.equals("CLOSE")
-                    || up.equals("USE") || up.equals("READ") || up.equals("JOB")) {
-                return true;
-            }
-            return w.length() == 1 && "SWIEFKNMQHGDXLROUBJ".indexOf(Character.toUpperCase(w.charAt(0))) >= 0;
-        }
-
-        /** Read a full expression (parens/strings aware) up to space or comma. */
-        String readExpr() {
-            skipWs();
-            int st = i;
-            int depth = 0;
-            boolean inS = false;
-            while (i < s.length()) {
-                char c = s.charAt(i);
-                if (inS) {
-                    if (c == '"') {
-                        inS = false;
-                    }
-                    i++;
-                    continue;
-                }
-                if (c == '"') {
-                    inS = true;
-                    i++;
-                    continue;
-                }
-                if (c == '(') {
-                    depth++;
-                    i++;
-                    continue;
-                }
-                if (c == ')') {
-                    if (depth == 0) {
-                        break; // caller's closer (arg lists)
-                    }
-                    depth--;
-                    i++;
-                    continue;
-                }
-                if (depth == 0 && (c == ',' || c == ' ')) {
-                    break;
-                }
-                i++;
-            }
-            return s.substring(st, i).trim();
-        }
-
-        String readRefToken() {
-            skipWs();
-            int st = i;
-            int depth = 0;
-            while (i < s.length()) {
-                char c = s.charAt(i);
-                if (c == '(') {
-                    depth++;
-                }
-                if (c == ')') {
-                    depth--;
-                }
-                if (depth == 0 && (c == ' ' || c == ',' || c == '=')) {
-                    break;
-                }
-                i++;
-            }
-            return s.substring(st, i).trim();
-        }
-
-        String readForSpec() {
-            skipWs();
-            int st = i;
-            int depth = 0;
-            boolean inS = false;
-            while (i < s.length()) {
-                char c = s.charAt(i);
-                if (inS) {
-                    if (c == '"') {
-                        inS = false;
-                    }
-                    i++;
-                    continue;
-                }
-                if (c == '"') {
-                    inS = true;
-                    i++;
-                    continue;
-                }
-                if (c == '(') {
-                    depth++;
-                }
-                if (c == ')') {
-                    depth--;
-                }
-                if (depth == 0 && c == ' ') {
-                    break;
-                }
-                i++;
-            }
-            return s.substring(st, i).trim();
-        }
-
-        void skipCmd() {
-            // skip to next likely command or end
-            int depth = 0;
-            boolean inS = false;
-            while (i < s.length()) {
-                char c = s.charAt(i);
-                if (inS) {
-                    if (c == '"') {
-                        inS = false;
-                    }
-                    i++;
-                    continue;
-                }
-                if (c == '"') {
-                    inS = true;
-                    i++;
-                    continue;
-                }
-                if (c == '(') {
-                    depth++;
-                }
-                if (c == ')') {
-                    depth--;
-                }
-                if (depth == 0 && c == ' ' && i + 1 < s.length()) {
-                    int j = i + 1;
-                    while (j < s.length() && s.charAt(j) == ' ') {
-                        j++;
-                    }
-                    if (j < s.length() && Character.isLetter(s.charAt(j))) {
-                        int k = j;
-                        while (k < s.length() && Character.isLetter(s.charAt(k))) {
-                            k++;
-                        }
-                        String w = s.substring(j, k);
-                        if ((k >= s.length() || s.charAt(k) == ' ' || s.charAt(k) == ':')
-                                && isCmdWord(w)) {
-                            i = j;
-                            return;
-                        }
-                    }
-                }
-                i++;
-            }
-        }
-    }
 }
