@@ -31,7 +31,7 @@ import mjvm.runtime.MRuntime;
  *   mjvm file.m          run a source file
  */
 public final class Mjvm {
-    public static final String VERSION = "V0.1.0 (mJVM M7)";
+    public static final String VERSION = "V0.3.0 (mJVM)";
     public static final String BANNER =
             "mJVM " + VERSION + " — JVM-native M (JvMumps StoreApi)\n"
             + "Drop-in CLI shaped like Reference Standard M (rsm)\n";
