@@ -388,6 +388,9 @@ public final class LineInterp {
     }
 
     MValue callExtrinsic(String name, List<MValue> args) {
+        if (name != null && name.equalsIgnoreCase("PEMDAS")) {
+            return PemdasEval.call(args);
+        }
         int target = findTag(name);
         if (target < 0) {
             throw new MError("No such label '" + name + "'");
