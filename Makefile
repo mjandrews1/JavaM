@@ -26,7 +26,7 @@ SMOKE_NOARG   := $(filter-out J0Smoke,$(SMOKE_CLASSES))
 # Integration: live SqlStore temp files (ad-hoc before #64).
 ITEST_CLASSES := SqlEngineSmoke SqlCorpusSmoke
 
-.PHONY: all smoke smokes-core itest run clean
+.PHONY: all smoke smokes-core itest run clean depgraph javadoc
 
 all: $(OUT)/jvmumps/CorpusRunner.class
 
@@ -67,13 +67,18 @@ itest: all
 	done; \
 	echo "ITEST OK $(words $(ITEST_CLASSES))"
 
+depgraph: all
+	@mkdir -p build
+	python3 tools/depgraph.py --build build --jdeps-out build/dep.dot --check
+	@echo "depgraph OK (no package cycles)"
+
 javadoc: all
 	$(JAVADOC) --release 21 -d docs/javadoc -cp $(CP) -quiet $$(find src/main/java -name '*.java')
 
 run: all
 	$(JAVA) -cp $(CP) jvmumps.CorpusRunner $(CORPUS)
 
-.PHONY: all smoke run clean javadoc mjvm bench install uninstall man dist
+.PHONY: all smoke run clean javadoc depgraph mjvm bench install uninstall man dist
 
 mjvm: all
 	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/main/java/mjvm/*/*.java
