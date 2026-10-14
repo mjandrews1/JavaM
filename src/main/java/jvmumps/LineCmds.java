@@ -27,7 +27,7 @@ final class LineCmds {
             c.next();
             MValue v = fe.eval.eval(c.readExpr());
             if (!lhs.startsWith("$")) {
-                List<String> path = fe.parseRef(lhs);
+                List<String> path = fe.refs.parseRef(lhs);
                 boolean glob = path.get(0).startsWith("^");
                 fe.tx.recordUndo(path, fe.store.get(path, glob));
                 fe.store.set(path, glob, v);
@@ -53,7 +53,7 @@ final class LineCmds {
                     int from = (int) fe.eval.eval(parts.get(1)).asNum();
                     int to = parts.size() > 2 ? (int) fe.eval.eval(parts.get(2)).asNum() : from;
                     String newv = v.asStr();
-                    List<String> path = fe.parseRef(ref);
+                    List<String> path = fe.refs.parseRef(ref);
                     boolean glob = path.get(0).startsWith("^");
                     String cur = fe.store.get(path, glob).asStr();
                     fe.tx.recordUndo(path, fe.store.get(path, glob));
@@ -104,7 +104,7 @@ final class LineCmds {
                         int from = (int) fe.eval.eval(parts.get(2)).asNum();
                         int to = parts.size() > 3 ? (int) fe.eval.eval(parts.get(3)).asNum() : from;
                         String newv = v.asStr();
-                        List<String> path = fe.parseRef(ref);
+                        List<String> path = fe.refs.parseRef(ref);
                         boolean glob = path.get(0).startsWith("^");
                         String cur = fe.store.get(path, glob).asStr();
                         fe.tx.recordUndo(path, fe.store.get(path, glob));
