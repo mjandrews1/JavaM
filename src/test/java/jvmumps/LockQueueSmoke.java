@@ -19,7 +19,15 @@ public final class LockQueueSmoke {
         LockQueue q = LockQueue.oneWriter(4);
         chk(q.acquireWrite("w1", 100), "1w acquire");
         chk(q.activeWriters() == 1, "1w count");
-        chk(!q.acquireWrite("w2", 50), "1w second writer timeout");
+        // reentrant same-thread write is OK (M LOCK +X twice)
+        chk(q.acquireWrite("w1", 50), "1w reentrant");
+        q.releaseWrite();
+        // other thread cannot take write while held
+        final boolean[] other = new boolean[1];
+        Thread ot = new Thread(() -> other[0] = q.acquireWrite("w2", 50));
+        ot.start();
+        ot.join(500);
+        chk(!other[0], "1w other writer timeout");
         chk(!q.acquireRead("r1", 50), "1w reader blocked");
         q.releaseWrite();
         chk(q.acquireRead("r1", 100), "r after w");

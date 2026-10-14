@@ -31,12 +31,13 @@ public final class LockQueue {
     private static final class Waiter {
         final boolean writer;
         final String pid;
-        final Object signal = new Object();
+        final Thread thread;
         boolean granted;
 
         Waiter(boolean writer, String pid) {
             this.writer = writer;
             this.pid = pid;
+            this.thread = Thread.currentThread();
         }
     }
 
@@ -44,6 +45,8 @@ public final class LockQueue {
     private final int maxReaders;
     private final int maxWriters;
     private final Object mu = new Object();
+    /** Re-entrant writer holds (M LOCK +X twice). */
+    private final java.util.Map<Thread, Integer> writeHolds = new java.util.HashMap<>();
     private final Deque<Waiter> queue = new ArrayDeque<>();
     private int activeReaders;
     private int activeWriters;
@@ -107,6 +110,13 @@ public final class LockQueue {
 
     public void releaseWrite() {
         synchronized (mu) {
+            Thread me = Thread.currentThread();
+            Integer h = writeHolds.get(me);
+            if (h != null && h > 1) {
+                writeHolds.put(me, h - 1);
+                return;
+            }
+            writeHolds.remove(me);
             if (activeWriters > 0) {
                 activeWriters--;
             }
@@ -119,8 +129,18 @@ public final class LockQueue {
         long deadline = System.currentTimeMillis() + Math.max(0, timeoutMs);
         synchronized (mu) {
             // fast path: empty queue and capacity
+            if (writer) {
+                Integer h = writeHolds.get(Thread.currentThread());
+                if (h != null && h > 0) {
+                    writeHolds.put(Thread.currentThread(), h + 1);
+                    return true;
+                }
+            }
             if (queue.isEmpty() && canGrant(writer)) {
                 take(writer);
+                if (writer) {
+                    writeHolds.put(Thread.currentThread(), 1);
+                }
                 return true;
             }
             queue.addLast(w);
@@ -170,6 +190,9 @@ public final class LockQueue {
             }
             queue.removeFirst();
             take(h.writer);
+            if (h.writer) {
+                writeHolds.put(h.thread, 1);
+            }
             h.granted = true;
             mu.notifyAll();
         }

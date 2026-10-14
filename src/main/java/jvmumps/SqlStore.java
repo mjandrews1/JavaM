@@ -5,6 +5,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +25,10 @@ public final class SqlStore implements StoreApi {
     static final char SEP = 1;
 
     final Connection conn;
+    /** In-process FIFO waiters per key (JavaM #59); mlocks is cross-process. */
+    private final ConcurrentHashMap<String, LockQueue> lockQueues = new ConcurrentHashMap<>();
+    /** Wait-time measurements (ms) for lockAcquire. */
+    private final ConcurrentHashMap<String, Long> lastWaitMs = new ConcurrentHashMap<>();
 
     public SqlStore(String path) throws Exception {
         Class.forName("org.sqlite.JDBC");
@@ -236,42 +241,70 @@ public final class SqlStore implements StoreApi {
         }
     }
 
-    /** Cross-process LOCK: + acquire (fail if held by other pid), - release. */
+    /**
+     * LOCK + acquire. In-process threads FIFO-queue on {@link LockQueue};
+     * cross-process exclusive ownership is the {@code mlocks} table.
+     * Returns false if {@code timeoutMs} elapses before both are held.
+     */
     public boolean lockAcquire(String key, String pid, long timeoutMs) {
-        long deadline = System.currentTimeMillis() + Math.max(0, timeoutMs);
-        while (true) {
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT OR IGNORE INTO mlocks VALUES (?,?,?)")) {
-                ps.setString(1, key);
-                ps.setString(2, pid);
-                ps.setLong(3, System.currentTimeMillis());
-                if (ps.executeUpdate() > 0) {
-                    return true;
-                }
-            } catch (Exception e) {
-                return false;
-            }
-            // already ours?
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT pid FROM mlocks WHERE lk=?")) {
-                ps.setString(1, key);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next() && pid.equals(rs.getString(1))) {
-                        return true;
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-            lockSweep(30_000);
-            if (System.currentTimeMillis() >= deadline) {
-                return false;
-            }
-            try {
-                Thread.sleep(2);
-            } catch (InterruptedException ie) {
-                return false;
-            }
+        long t0 = System.currentTimeMillis();
+        long budget = Math.max(0, timeoutMs);
+        LockQueue q = lockQueues.computeIfAbsent(key, k -> LockQueue.oneWriter(64));
+        if (!q.acquireWrite(pid, budget)) {
+            lastWaitMs.put(key, System.currentTimeMillis() - t0);
+            return false;
         }
+        long deadline = t0 + budget;
+        boolean ok = false;
+        try {
+            while (true) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT OR IGNORE INTO mlocks VALUES (?,?,?)")) {
+                    ps.setString(1, key);
+                    ps.setString(2, pid);
+                    ps.setLong(3, System.currentTimeMillis());
+                    if (ps.executeUpdate() > 0) {
+                        ok = true;
+                        break;
+                    }
+                } catch (Exception e) {
+                    break;
+                }
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT pid FROM mlocks WHERE lk=?")) {
+                    ps.setString(1, key);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next() && pid.equals(rs.getString(1))) {
+                            ok = true;
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+                lockSweep(30_000);
+                if (System.currentTimeMillis() >= deadline) {
+                    break;
+                }
+                try {
+                    Thread.sleep(2);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        } finally {
+            if (!ok) {
+                q.releaseWrite();
+            }
+            lastWaitMs.put(key, System.currentTimeMillis() - t0);
+        }
+        return ok;
+    }
+
+    /** Last lockAcquire wait duration (ms) for key; -1 if never measured. */
+    public long lastLockWaitMs(String key) {
+        Long v = lastWaitMs.get(key);
+        return v == null ? -1L : v;
     }
 
     public void lockRelease(String key, String pid) {
@@ -281,6 +314,10 @@ public final class SqlStore implements StoreApi {
             ps.setString(2, pid);
             ps.executeUpdate();
         } catch (Exception ignored) {
+        }
+        LockQueue q = lockQueues.get(key);
+        if (q != null) {
+            q.releaseWrite();
         }
     }
 
