@@ -56,9 +56,9 @@ public final class MFrontend {
             }
             i = MFrontendUtil.skipWs(line, i);
             if (cmd.equals("S") || cmd.equals("SET")) {
-                i = compileSet(line, i, out);
+                i = MFrontendCmds.compileSet(this, line, i, out);
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
-                i = compileWrite(line, i, out);
+                i = MFrontendCmds.compileWrite(this, line, i, out);
             } else if (cmd.equals("Q") || cmd.equals("QUIT")) {
                 out.add(Ir.ret());
                 break;
@@ -587,12 +587,12 @@ public final class MFrontend {
 
 
 
-    private void compileInto(String body, List<Ir> out) {
+    void compileInto(String body, List<Ir> out) {
         if (body.isEmpty()) return;
         out.addAll(compile(body, false));
     }
 
-    private void compileExprSrc(String src, List<Ir> out) {
+    void compileExprSrc(String src, List<Ir> out) {
         compileExpr(src, 0, out, "\0");
     }
 
@@ -657,235 +657,11 @@ public final class MFrontend {
     /** Read name[+subs] at pos[0]; returns {name, newPosAsString}. */
 
 
-    private int compileSet(String line, int i, List<Ir> out) {
-        // M11: multi-assign S a=1,b=2 and specials $ETRAP/$E/$P
-        for (;;) {
-            i = MFrontendUtil.skipWs(line, i);
-            if (i >= line.length() || MFrontendUtil.isCmdStart(line, i)) break;
-            int st = i;
-            if (i < line.length() && line.charAt(i) == '@') {
-                int k = MFrontendUtil.scanExprEnd(line, i + 1, " ,=");
-                String ind = line.substring(i + 1, k).trim();
-                i = MFrontendUtil.skipWs(line, k);
-                if (i < line.length() && line.charAt(i) == '=') {
-                    i++;
-                    int vs = i;
-                    i = MFrontendUtil.scanExprEnd(line, i, " ,");
-                    out.add(Ir.evalExpr(line.substring(vs, i).trim()));
-                    out.add(new Ir(Ir.STORE, "@" + ind, null, 0, 0));
-                }
-                if (i < line.length() && line.charAt(i) == ',') {
-                    i++;
-                    continue;
-                }
-                break;
-            }
-            // target may be $E(…) $P(…) $ETRAP or a name/subscript ref
-            if (i < line.length() && line.charAt(i) == '$') {
-                int k = i + 1;
-                while (k < line.length() && (Character.isLetter(line.charAt(k)))) k++;
-                String sp = line.substring(i, k).toUpperCase();
-                if (i < line.length() && k < line.length() && line.charAt(k) == '(') {
-                    // $E(ref,f[,t])=v / $P(…) — bridge via evalExpr assignment is not
-                    // supported; skip args and use EVAL of full SET via store of result
-                    // Fall back: parse ref=target and store into the named variable.
-                    k++;
-                    int depth = 1;
-                    int rs = k;
-                    while (k < line.length() && depth > 0) {
-                        char c = line.charAt(k);
-                        if (c == '(') depth++;
-                        else if (c == ')') depth--;
-                        if (depth == 0) break;
-                        k++;
-                    }
-                    String inner = line.substring(rs, k);
-                    if (k < line.length() && line.charAt(k) == ')') k++;
-                    if (k < line.length() && line.charAt(k) == '=') {
-                        k++;
-                        int vs = k;
-                        k = MFrontendUtil.scanExprEnd(line, k, " ,");
-                        String val = line.substring(vs, k).trim();
-                        String[] parts = MFrontendUtil.splitArgsCommas(inner).toArray(new String[0]);
-                        String ref = parts[0].trim();
-                        int from = 1;
-                        int to = 1;
-                        String d = ",";
-                        if (sp.equals("$E") || sp.equals("$EXTRACT")) {
-                            if (parts.length > 1) from = (int) jvmumps.ExprEval.toNum(parts[1].trim());
-                            to = from;
-                            if (parts.length > 2) to = (int) jvmumps.ExprEval.toNum(parts[2].trim());
-                            out.add(Ir.evalExpr(val));
-                            out.add(Ir.setExtract(ref, from, to));
-                        } else {
-                            // $PIECE(ref,d,f[,t])
-                            d = parts.length > 1 ? parts[1].trim() : ",";
-                            if (d.length() >= 2 && d.charAt(0) == '"') d = d.substring(1, d.length() - 1);
-                            if (parts.length > 2) from = (int) jvmumps.ExprEval.toNum(parts[2].trim());
-                            to = from;
-                            if (parts.length > 3) to = (int) jvmumps.ExprEval.toNum(parts[3].trim());
-                            out.add(Ir.evalExpr(val));
-                            out.add(Ir.setPiece(ref, d, from, to));
-                        }
-                        i = k;
-                        if (i < line.length() && line.charAt(i) == ',') {
-                            i++;
-                            continue;
-                        }
-                        break;
-                    }
-                }
-                // $ETRAP= etc.
-                if (k < line.length() && line.charAt(k) == '=') {
-                    k++;
-                    int vs = k;
-                    k = MFrontendUtil.scanExprEnd(line, k, " ,");
-                    String val = line.substring(vs, k).trim();
-                    out.add(Ir.evalExpr(val));
-                    out.add(Ir.store(sp));
-                    i = k;
-                    if (i < line.length() && line.charAt(i) == ',') {
-                        i++;
-                        continue;
-                    }
-                    break;
-                }
-            }
-            while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
-                    || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
-            if (i == st) throw new MError("SET target must be a name");
-            StringBuilder nm = new StringBuilder(line.substring(st, i));
-            if (i < line.length() && line.charAt(i) == '(') {
-                int depth = 0;
-                int stp = i;
-                while (i < line.length()) {
-                    char c = line.charAt(i++);
-                    if (c == '(') depth++;
-                    else if (c == ')') {
-                        depth--;
-                        if (depth == 0) break;
-                    }
-                }
-                nm.append(line, stp, i);
-            }
-            String name = nm.toString();
-            i = MFrontendUtil.skipWs(line, i);
-            if (i >= line.length() || line.charAt(i) != '=')
-                throw new MError("SET requires = after " + name);
-            i++;
-            int vs = i;
-            i = MFrontendUtil.scanExprEnd(line, i, " ,");
-            String val = line.substring(vs, i).trim();
-            if (val.indexOf('$') >= 0 || val.indexOf('@') >= 0 || val.indexOf('?') > 0) {
-                out.add(Ir.evalExpr(val));
-            } else {
-                // keep simple IR path
-                List<Ir> tmp = new ArrayList<>();
-                int ni = compileExpr(line, vs, tmp, " ,");
-                out.addAll(tmp);
-                i = ni;
-            }
-            out.add(Ir.store(name));
-            i = MFrontendUtil.skipWs(line, i);
-            if (i < line.length() && line.charAt(i) == ',') {
-                i++;
-                continue;
-            }
-            break;
-        }
-        return i;
-    }
 
-    private int compileWrite(String line, int i, List<Ir> out) {
-        boolean pending = false;
-        if (i < line.length() && line.charAt(i) == ':') {
-            i++;
-            int cs = i;
-            i = MFrontendUtil.scanExprEnd(line, i, " ");
-            String cond = line.substring(cs, i).trim();
-            out.add(Ir.evalExpr(cond));
-            int j0 = out.size();
-            out.add(Ir.jmp0(-1));
-            i = compileWrite(line, i, out);
-            out.set(j0, Ir.jmp0(out.size()));
-            return i;
-        }
-        while (i < line.length()) {
-            i = MFrontendUtil.skipWs(line, i);
-            if (i >= line.length()) break;
-            char c = line.charAt(i);
-            if (c == '!') {
-                out.add(Ir.writeNl());
-                pending = false;
-                i++;
-                i = MFrontendUtil.skipWs(line, i);
-                if (i < line.length() && line.charAt(i) == ',') i++;
-                continue;
-            }
-            if (c == '#') {
-                out.add(Ir.writeNl());
-                pending = false;
-                i++;
-                i = MFrontendUtil.skipWs(line, i);
-                if (i < line.length() && line.charAt(i) == ',') i++;
-                continue;
-            }
-            if (c == '*') {
-                i++;
-                int vs = i;
-                i = MFrontendUtil.scanExprEnd(line, i, ", ");
-                List<Ir> tmp = new ArrayList<>();
-                compileExprSrc(line.substring(vs, i).trim(), tmp);
-                out.addAll(tmp);
-                out.add(Ir.writeChar());
-                pending = true;
-                i = MFrontendUtil.skipWs(line, i);
-                if (i < line.length() && line.charAt(i) == ',') i++;
-                continue;
-            }
-            if (c == '?') {
-                i++;
-                int vs = i;
-                i = MFrontendUtil.scanExprEnd(line, i, ", ");
-                List<Ir> tmp = new ArrayList<>();
-                compileExprSrc(line.substring(vs, i).trim(), tmp);
-                out.addAll(tmp);
-                out.add(Ir.writeCol());
-                pending = true;
-                i = MFrontendUtil.skipWs(line, i);
-                if (i < line.length() && line.charAt(i) == ',') i++;
-                continue;
-            }
-            if (MFrontendUtil.isCmdStart(line, i)) break;
-            if (c == '@') {
-                int k = MFrontendUtil.scanExprEnd(line, i + 1, " ,");
-                out.add(Ir.evalExpr(line.substring(i + 1, k).trim()));
-                out.add(Ir.writeArgs());
-                pending = true;
-                i = k;
-                i = MFrontendUtil.skipWs(line, i);
-                if (i < line.length() && line.charAt(i) == ',') i++;
-                continue;
-            }
-            int before = i;
-            i = compileExpr(line, i, out, ",");
-            out.add(Ir.write());
-            pending = true;
-            if (i == before) {
-                throw new MError("WRITE could not parse at " + line.substring(i));
-            }
-            i = MFrontendUtil.skipWs(line, i);
-            if (i < line.length() && line.charAt(i) == ',') {
-                i++;
-                continue;
-            }
-            if (MFrontendUtil.isCmdStart(line, i)) break;
-        }
-        if (pending) out.add(Ir.endWrite());
-        return i;
-    }
 
-    private int compileExpr(String line, int i, List<Ir> out, String term) {
+
+
+    int compileExpr(String line, int i, List<Ir> out, String term) {
         // M11: route expressions through JvMumps ExprEval (single semantics source)
         int j = MFrontendUtil.scanExprEnd(line, i, term);
         String span = line.substring(i, j).trim();
