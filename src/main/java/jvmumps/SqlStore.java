@@ -20,6 +20,7 @@ import java.util.List;
  * RSM remains the <b>file-backed production M oracle</b> ({@code rsm.dat} /
  * global buffers) — not replaced by SQLite. Cross-process locks use
  * {@code mlocks}; see also {@link MStore} for the ephemeral backend.
+ * Lock/file-record semantics: {@code docs/SQLSTORE-LOCKS.md}.
  */
 public final class SqlStore implements StoreApi {
     static final char SEP = 1;
