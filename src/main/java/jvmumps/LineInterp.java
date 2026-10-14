@@ -13,15 +13,15 @@ import java.util.Map;
  * extrinsics {@code $$tag}.
  */
 public final class LineInterp {
-    private final StoreApi store;
-    private final ExprEval eval;
-    private final StringBuilder out = new StringBuilder();
-    private boolean test = true;
-    private boolean quit = false;
-    private int vx = 0;
-    private int vy = 0;
+    final StoreApi store;
+    final ExprEval eval;
+    final StringBuilder out = new StringBuilder();
+    boolean test = true;
+    boolean quit = false;
+    int vx = 0;
+    int vy = 0;
     private final LineDevices devices = new LineDevices();
-    private final LineTxLocks tx;
+    final LineTxLocks tx;
 
     // ---- J13 routine state ----
     static final class RtLine {
@@ -50,14 +50,14 @@ public final class LineInterp {
         }
     }
 
-    private List<RtLine> prog;
-    private int pc;
-    private String pendingRest;
-    private final Deque<Frame> doStack = new ArrayDeque<>();
-    private final Map<String, Integer> tags = new LinkedHashMap<>();
-    private MValue extrinsicValue = MValue.EMPTY;
-    private boolean routineMode = false;
-    private boolean trapFiring = false;
+    List<RtLine> prog;
+    int pc;
+    String pendingRest;
+    final Deque<Frame> doStack = new ArrayDeque<>();
+    final Map<String, Integer> tags = new LinkedHashMap<>();
+    MValue extrinsicValue = MValue.EMPTY;
+    boolean routineMode = false;
+    boolean trapFiring = false;
 
     public LineInterp() {
         this(new MStore());
@@ -104,7 +104,7 @@ public final class LineInterp {
 
             @Override
             public MValue extrinsic(String name, List<MValue> args) {
-                return callExtrinsic(name, args);
+                return LineRoutine.callExtrinsic(LineInterp.this, name, args);
             }
         });
         // $X / $Y via names
@@ -119,7 +119,7 @@ public final class LineInterp {
         eval.vy = vy;
         try {
             if (looksLikeRoutine(line)) {
-                runRoutine(line);
+                LineRoutine.runRoutine(this, line);
             } else {
                 exec(line);
             }
@@ -207,10 +207,10 @@ public final class LineInterp {
      * J14: run one command; on MError fire $ETRAP/$ZTRAP if set.
      * Returns true if the command ran without a trap-handled error.
      */
-    private boolean execOneTrapped(Cursor c) {
+    boolean execOneTrapped(Cursor c) {
         try {
             int before = c.i;
-            execOne(c);
+            LineDispatch.execOne(this, c);
             return true;
         } catch (MError e) {
             String trap = !eval.etrap.isEmpty() ? eval.etrap : eval.ztrap;
@@ -229,7 +229,7 @@ public final class LineInterp {
                 while (!tc.atEnd() && !quit) {
                     int b = tc.i;
                     try {
-                        execOne(tc);
+                        LineDispatch.execOne(this, tc);
                     } catch (MError e2) {
                         if (tc.i == b) {
                             tc.next();
@@ -315,174 +315,22 @@ public final class LineInterp {
         return lines;
     }
 
-    void runRoutine(String code) {
-        prog = parseRoutine(code);
-        tags.clear();
-        for (int i = 0; i < prog.size(); i++) {
-            String t = prog.get(i).tag;
-            if (t != null) {
-                tags.putIfAbsent(t.toUpperCase(), i);
-            }
-        }
-        routineMode = true;
-        pc = 0;
-        pendingRest = null;
-        doStack.clear();
-        runLoop();
-        routineMode = false;
-        prog = null;
-    }
+
 
     /** Run from pc until halt or end of program. DO/Q/GOTO steer pc. */
-    private void runLoop() {
-        while (pc < prog.size() && !quit) {
-            String body = pendingRest != null ? pendingRest : prog.get(pc).body;
-            boolean wasRest = pendingRest != null;
-            pendingRest = null;
-            int pcBefore = pc;
-            Cursor c = new Cursor(body);
-            while (!c.atEnd() && !quit && pc == pcBefore && pendingRest == null) {
-                int before = c.i;
-                execOneTrapped(c);
-                if (c.i == before && !c.atEnd()) {
-                    c.next();
-                }
-            }
-            if (quit) {
-                return;
-            }
-            if (pendingRest != null) {
-                continue; // QUIT popped / DO redirected with rest
-            }
-            if (pc != pcBefore) {
-                continue; // GOTO / DO jumped
-            }
-            if (!wasRest) {
-                pc++;
-            } else {
-                // finished a resume-rest: continue with the next line after the DO line
-                pc++;
-            }
-        }
-    }
 
-    int findTag(String name) {
-        Integer ix = tags.get(name.toUpperCase());
-        return ix == null ? -1 : ix;
-    }
 
-    void bindFormals(RtLine line, List<MValue> args) {
-        if (line.formals == null) {
-            return;
-        }
-        for (int i = 0; i < line.formals.size(); i++) {
-            MValue v = i < args.size() ? args.get(i) : MValue.EMPTY;
-            eval.set(line.formals.get(i), v);
-        }
-    }
 
-    MValue callExtrinsic(String name, List<MValue> args) {
-        if (name != null && name.equalsIgnoreCase("PEMDAS")) {
-            return PemdasEval.call(args);
-        }
-        int target = findTag(name);
-        if (target < 0) {
-            throw new MError("No such label '" + name + "'");
-        }
-        int savePc = pc;
-        String saveRest = pendingRest;
-        boolean saveQuit = quit;
-        MValue saveVal = extrinsicValue;
-        List<String> savedFormals = null;
-        RtLine tl = prog.get(target);
-        if (tl.formals != null) {
-            savedFormals = new ArrayList<>(tl.formals);
-        }
-        pendingRest = null;
-        quit = false;
-        extrinsicValue = MValue.EMPTY;
-        bindFormals(tl, args);
-        int stackBase = doStack.size();
-        doStack.push(new Frame(savePc, saveRest, true, savedFormals));
-        pc = target;
-        runLoop();
-        // unwind if the target forgot QUIT
-        while (doStack.size() > stackBase) {
-            Frame f = doStack.pop();
-            if (f.extrinsic) {
-                break;
-            }
-        }
-        MValue v = extrinsicValue;
-        extrinsicValue = saveVal;
-        pc = savePc;
-        pendingRest = saveRest;
-        quit = saveQuit;
-        return v;
-    }
 
-    private void doDo(Cursor c) {
-        c.skipWs();
-        if (c.atEnd() || c.peek() == ',' || c.startsCommand()) {
-            // argumentless DO: run following dotted block if any — J13 treats as no-op
-            return;
-        }
-        boolean extrinsic = false;
-        String target = null;
-        if (c.peek() == '$' && c.i + 1 < c.s.length() && c.s.charAt(c.i + 1) == '$') {
-            // DO $$tag — extrinsic style call
-            extrinsic = true;
-            c.next();
-            c.next();
-            target = readTagName(c);
-        } else {
-            target = readTagName(c);
-            if (target.startsWith("^")) {
-                // external routine DO ^RTN — not in J13 same-routine set
-                return;
-            }
-        }
-        List<MValue> args = new ArrayList<>();
-        if (c.peek() == '(') {
-            c.next();
-            args = evalArgs(c);
-            if (c.peek() == ')') {
-                c.next();
-            }
-        }
-        int ix = findTag(target);
-        if (ix < 0) {
-            throw new MError("No such label '" + target + "'");
-        }
-        int retLine = pc;
-        String retRest = c.s.substring(c.i);
-        List<String> savedFormals = null;
-        RtLine tl = prog.get(ix);
-        if (tl.formals != null) {
-            savedFormals = new ArrayList<>(tl.formals);
-        }
-        doStack.push(new Frame(retLine, retRest, extrinsic, savedFormals));
-        bindFormals(tl, args);
-        pc = ix;
-        pendingRest = null;
-    }
 
-    private void doGoto(Cursor c) {
-        c.skipWs();
-        String target = readTagName(c);
-        if (target.isEmpty() || target.startsWith("^")) {
-            return;
-        }
-        int ix = findTag(target);
-        if (ix < 0) {
-            throw new MError("No such label '" + target + "'");
-        }
-        pc = ix;
-        pendingRest = null;
-        c.skipToEnd();
-    }
 
-    private void doXecute(Cursor c) {
+
+
+
+
+
+
+    void doXecute(Cursor c) {
         // X expr[,expr…] — each string runs as commands in this context
         while (!c.atEnd()) {
             c.skipWs();
@@ -500,7 +348,7 @@ public final class LineInterp {
                 Cursor xc = new Cursor(body);
                 while (!xc.atEnd() && !quit) {
                     int before = xc.i;
-                    execOne(xc);
+                    LineDispatch.execOne(this, xc);
                     if (xc.i == before && !xc.atEnd()) {
                         xc.next();
                     }
@@ -515,7 +363,7 @@ public final class LineInterp {
         }
     }
 
-    private String readTagName(Cursor c) {
+    String readTagName(Cursor c) {
         c.skipWs();
         int st = c.i;
         if (c.peek() == '^') {
@@ -531,7 +379,7 @@ public final class LineInterp {
         return c.s.substring(st, c.i);
     }
 
-    private List<MValue> evalArgs(Cursor c) {
+    List<MValue> evalArgs(Cursor c) {
         List<MValue> args = new ArrayList<>();
         if (c.peek() == ')') {
             return args;
@@ -549,181 +397,14 @@ public final class LineInterp {
         return args;
     }
 
-    private void doQuit() {
-        if (!routineMode || doStack.isEmpty()) {
-            quit = true;
-            return;
-        }
-        Frame f = doStack.pop();
-        if (f.savedFormals != null) {
-            for (String n : f.savedFormals) {
-                eval.set(n, MValue.EMPTY);
-            }
-        }
-        if (f.extrinsic) {
-            quit = true; // end callExtrinsic runLoop
-            return;
-        }
-        pc = f.retLine;
-        pendingRest = f.retRest == null ? "" : f.retRest;
-    }
 
-    private void doQuitExpr(String exprSrc) {
-        MValue v = eval.eval(exprSrc);
-        extrinsicValue = v;
-        if (!routineMode || doStack.isEmpty()) {
-            quit = true;
-            return;
-        }
-        Frame f = doStack.pop();
-        if (f.savedFormals != null) {
-            for (String n : f.savedFormals) {
-                eval.set(n, MValue.EMPTY);
-            }
-        }
-        if (f.extrinsic) {
-            quit = true;
-            return;
-        }
-        pc = f.retLine;
-        pendingRest = f.retRest == null ? "" : f.retRest;
-    }
 
-    private void execOne(Cursor c) {
-        c.skipWs();
-        if (c.atEnd()) {
-            return;
-        }
-        String name = c.readCmdName();
-        if (name.isEmpty()) {
-            return;
-        }
-        String up = name.toUpperCase();
-        // postcond
-        if (c.peek() == ':') {
-            c.next();
-            String cond = c.readExpr();
-            boolean ok = ExprEval.truthy(eval.eval(cond));
-            test = ok;
-            if (!ok) {
-                c.skipCmd();
-                return;
-            }
-        }
-        if (up.equals("W") || up.equals("WRITE")) {
-            doWrite(c);
-            return;
-        }
-        if (up.equals("S") || up.equals("SET")) {
-            doSet(c);
-            return;
-        }
-        if (up.equals("I") || up.equals("IF")) {
-            String ex = c.readExpr();
-            boolean ok = ExprEval.truthy(eval.eval(ex));
-            test = ok;
-            if (ok) {
-                execOne(c);
-            } else {
-                c.skipOneArg();
-            }
-            return;
-        }
-        if (up.equals("E") || up.equals("ELSE")) {
-            if (!test) {
-                test = true;
-                execOne(c);
-            } else {
-                c.skipOneArg();
-            }
-            return;
-        }
-        if (up.equals("F") || up.equals("FOR")) {
-            doFor(c);
-            return;
-        }
-        if (up.equals("K") || up.equals("KILL")) {
-            doKill(c);
-            return;
-        }
-        if (up.equals("L") || up.equals("LOCK")) {
-            doLock(c);
-            return;
-        }
-        if (up.equals("O") || up.equals("OPEN")) {
-            doOpen(c);
-            return;
-        }
-        if (up.equals("C") || up.equals("CLOSE")) {
-            doClose(c);
-            return;
-        }
-        if (up.equals("U") || up.equals("USE")) {
-            doUse(c);
-            return;
-        }
-        if (up.equals("R") || up.equals("READ")) {
-            doRead(c);
-            return;
-        }
-        if (up.equals("J") || up.equals("JOB")) {
-            doJob(c);
-            return;
-        }
-        if (up.equals("TSTART")) {
-            doTStart(c);
-            return;
-        }
-        if (up.equals("TCOMMIT")) {
-            doTCommit(c);
-            return;
-        }
-        if (up.equals("TROLLBACK")) {
-            doTRollback(c);
-            return;
-        }
-        if (up.equals("N") || up.equals("NEW")) {
-            doNew(c);
-            return;
-        }
-        if (up.equals("M") || up.equals("MERGE")) {
-            doMerge(c);
-            return;
-        }
-        if (up.startsWith("Q")) {
-            // QUIT [expr]
-            c.skipWs();
-            if (!c.atEnd() && !c.startsCommand()) {
-                String ex = c.readExpr();
-                if (!ex.isEmpty()) {
-                    doQuitExpr(ex);
-                    return;
-                }
-            }
-            doQuit();
-            return;
-        }
-        if (up.equals("D") || up.equals("DO")) {
-            doDo(c);
-            return;
-        }
-        if (up.equals("G") || up.equals("GOTO")) {
-            doGoto(c);
-            return;
-        }
-        if (up.equals("X") || up.equals("XECUTE")) {
-            doXecute(c);
-            return;
-        }
-        if (up.startsWith("H") || up.startsWith("L") || up.startsWith("B")) {
-            c.skipCmd();
-            return;
-        }
-        c.skipCmd();
-    }
+
+
+
 
     /** J12b: true if @expr is a whole write-arg (next is ,!#?/end/cmd), not @x+1. */
-    private boolean argIndirection(Cursor c) {
+    boolean argIndirection(Cursor c) {
         int save = c.i;
         c.next(); // @
         try {
@@ -738,7 +419,7 @@ public final class LineInterp {
     }
 
     /** Operand of @: parenthesized expr or name[+subs] (stops before operators). */
-    private String readIndOperand(Cursor c) {
+    String readIndOperand(Cursor c) {
         c.skipWs();
         if (c.peek() == '(') {
             return c.readExpr();
@@ -798,90 +479,9 @@ public final class LineInterp {
         return parts;
     }
 
-    private void doWrite(Cursor c) {
-        // Line-oriented (shared corpus / PyMumps): each WRITE flushes lines on
-        // ! / # / *10 and a trailing flush. Append each line + \n to out.
-        StringBuilder buf = new StringBuilder();
-        while (!c.atEnd()) {
-            c.skipWs();
-            if (c.atEnd()) {
-                break;
-            }
-            if (c.peek() == ',') {
-                c.next();
-                continue;
-            }
-            if (c.peek() == '!') {
-                c.next();
-                flushWriteLine(buf);
-                continue;
-            }
-            if (c.peek() == '#') {
-                c.next();
-                flushWriteLine(buf);
-                continue;
-            }
-            if (c.peek() == '?') {
-                c.next();
-                String ex = c.readExpr();
-                int n = (int) eval.eval(ex).asNum();
-                if (n > vx) {
-                    buf.append(" ".repeat(n - vx));
-                    vx = n;
-                    eval.vx = vx;
-                }
-                continue;
-            }
-            if (c.peek() == '*') {
-                c.next();
-                String ex = c.readExpr();
-                int code = (int) eval.eval(ex).asNum();
-                if (code == 10) {
-                    flushWriteLine(buf);
-                } else {
-                    char ch = (code >= 0 && code <= 255) ? (char) code : '?';
-                    buf.append(ch);
-                    vx++;
-                    eval.vx = vx;
-                }
-                continue;
-            }
-            // next command?
-            if (c.startsCommand()) {
-                break;
-            }
-            // J12b argument indirection: @expr as a whole write-arg reparses its
-            // string (commas → multiple args). Followed by an operator → name form.
-            if (c.peek() == '@' && argIndirection(c)) {
-                c.next(); // consume @
-                String text = eval.eval(readIndOperand(c)).asStr();
-                for (String part : splitTopCommas(text)) {
-                    MValue v = eval.eval(part);
-                    String s = v.isnum ? ExprEval.mstr(v.num) : v.str;
-                    buf.append(s);
-                    vx += s.length();
-                    eval.vx = vx;
-                    eval.vy = vy;
-                }
-                continue;
-            }
-            MValue v = eval.eval(c.readExpr());
-            String s = v.isnum ? ExprEval.mstr(v.num) : v.str;
-            buf.append(s);
-            vx += s.length();
-            eval.vx = vx;
-            eval.vy = vy;
-        }
-        if (buf.length() > 0) {
-            // end-of-WRITE line break does not reset $X/$Y (C90)
-            out.append(buf);
-            out.append('\n');
-            buf.setLength(0);
-        }
-        test = true;
-    }
 
-    private void flushWriteLine(StringBuilder buf) {
+
+    void flushWriteLine(StringBuilder buf) {
         out.append(buf);
         out.append('\n');
         buf.setLength(0);
@@ -891,119 +491,7 @@ public final class LineInterp {
         eval.vy = vy;
     }
 
-    private void doSet(Cursor c) {
-        // SET var=expr[,var=expr…]  (ISO 8.1.2)
-        for (;;) {
-            c.skipWs();
-            if (c.atEnd()) break;
-            String lhs = c.readRefToken();
-            if (lhs.startsWith("@")) {
-                // J12b indirect SET target: S @W2=99 → S Y=99
-                lhs = eval.eval(lhs.substring(1)).asStr();
-            }
-            c.skipWs();
-            if (c.peek() != '=') {
-                c.skipCmd();
-                return;
-            }
-            c.next();
-            MValue v = eval.eval(c.readExpr());
-            if (!lhs.startsWith("$")) {
-                List<String> path = parseRef(lhs);
-                boolean glob = path.get(0).startsWith("^");
-                tx.recordUndo(path, store.get(path, glob));
-                store.set(path, glob, v);
-            } else if (lhs.equalsIgnoreCase("$ETRAP")) {
-                eval.etrap = v.asStr();
-            } else if (lhs.equalsIgnoreCase("$ECODE")) {
-                eval.ecode = v.asStr();
-            } else if (lhs.equalsIgnoreCase("$ZTRAP")) {
-                eval.ztrap = v.asStr();
-            } else if (lhs.equalsIgnoreCase("$X")) {
-                vx = (int) v.asNum();
-                eval.vx = vx;
-            } else if (lhs.equalsIgnoreCase("$Y")) {
-                vy = (int) v.asNum();
-                eval.vy = vy;
-            } else if (isExtractSet(lhs)) {
-                // SET $EXTRACT(ref,from[,to])=val (C49)
-                int lp = lhs.indexOf('(');
-                String inner = lhs.substring(lp + 1, lhs.lastIndexOf(')'));
-                List<String> parts = splitTopCommas(inner);
-                if (parts.size() >= 2) {
-                    String ref = parts.get(0);
-                    int from = (int) eval.eval(parts.get(1)).asNum();
-                    int to = parts.size() > 2 ? (int) eval.eval(parts.get(2)).asNum() : from;
-                    String newv = v.asStr();
-                    List<String> path = parseRef(ref);
-                    boolean glob = path.get(0).startsWith("^");
-                    String cur = store.get(path, glob).asStr();
-                    tx.recordUndo(path, store.get(path, glob));
-                    store.set(path, glob, MValue.ofString(setExtractOf(cur, from, to, newv)));
-                }
-            } else if (lhs.toUpperCase().startsWith("$P") || lhs.toUpperCase().startsWith("$PIECE")) {
-                // SET $PIECE(ref,d,f[,t])=val
-                int lp = lhs.indexOf('(');
-                if (lp > 0) {
-                    String inner = lhs.substring(lp + 1, lhs.lastIndexOf(')'));
-                    // first arg is ref name (maybe with subs)
-                    List<String> parts = new ArrayList<>();
-                    StringBuilder sb = new StringBuilder();
-                    int depth = 0;
-                    boolean inS = false;
-                    for (char ch : inner.toCharArray()) {
-                        if (inS) {
-                            sb.append(ch);
-                            if (ch == '"') {
-                                inS = false;
-                            }
-                            continue;
-                        }
-                        if (ch == '"') {
-                            inS = true;
-                            sb.append(ch);
-                            continue;
-                        }
-                        if (ch == '(') {
-                            depth++;
-                            sb.append(ch);
-                        } else if (ch == ')') {
-                            depth--;
-                            sb.append(ch);
-                        } else if (ch == ',' && depth == 0) {
-                            parts.add(sb.toString().trim());
-                            sb.setLength(0);
-                        } else {
-                            sb.append(ch);
-                        }
-                    }
-                    if (sb.length() > 0) {
-                        parts.add(sb.toString().trim());
-                    }
-                    if (parts.size() >= 3) {
-                        String ref = parts.get(0);
-                        String del = eval.eval(parts.get(1)).asStr();
-                        int from = (int) eval.eval(parts.get(2)).asNum();
-                        int to = parts.size() > 3 ? (int) eval.eval(parts.get(3)).asNum() : from;
-                        String newv = v.asStr();
-                        List<String> path = parseRef(ref);
-                        boolean glob = path.get(0).startsWith("^");
-                        String cur = store.get(path, glob).asStr();
-                        tx.recordUndo(path, store.get(path, glob));
-                        store.set(path, glob, MValue.ofString(setPieceOf(cur, del, from, to, newv)));
-                    }
-                }
-            }
-            // next assignment after comma
-            c.skipWs();
-            if (c.peek() == ',') {
-                c.next();
-                continue;
-            }
-            break;
-        }
-        test = true;
-    }
+
 
     static boolean isExtractSet(String lhs) {
         String u = lhs.toUpperCase();
@@ -1093,7 +581,7 @@ public final class LineInterp {
         return s.substring(0, start) + v + s.substring(end);
     }
 
-    private void doKill(Cursor c) {
+    void doKill(Cursor c) {
         while (!c.atEnd()) {
             c.skipWs();
             if (c.atEnd() || c.startsCommand()) {
@@ -1115,7 +603,7 @@ public final class LineInterp {
         }
     }
 
-    private void doJob(Cursor c) {
+    void doJob(Cursor c) {
         // J10: real JOB — spawn a child JVM running the snippet (async)
         c.skipWs();
         String code = c.readExpr();
@@ -1137,22 +625,22 @@ public final class LineInterp {
         test = true;
     }
 
-    private void doTStart(Cursor c) {
+    void doTStart(Cursor c) {
         tx.tstart();
         c.skipCmd();
     }
 
-    private void doTCommit(Cursor c) {
+    void doTCommit(Cursor c) {
         tx.tcommit();
         c.skipCmd();
     }
 
-    private void doTRollback(Cursor c) {
+    void doTRollback(Cursor c) {
         tx.trollback();
         c.skipCmd();
     }
 
-    private void doOpen(Cursor c) {
+    void doOpen(Cursor c) {
         c.skipWs();
         int n = 1;
         String path = null;
@@ -1176,7 +664,7 @@ public final class LineInterp {
         }
     }
 
-    private void doClose(Cursor c) {
+    void doClose(Cursor c) {
         c.skipWs();
         String tok = c.readRefToken();
         int n = 1;
@@ -1186,14 +674,14 @@ public final class LineInterp {
         devices.close(n);
     }
 
-    private void doUse(Cursor c) {
+    void doUse(Cursor c) {
         c.skipWs();
         String tok = c.readRefToken();
         int n = tok.isEmpty() ? 0 : (int) ExprEval.toNum(tok);
         devices.use(n);
     }
 
-    private void doRead(Cursor c) {
+    void doRead(Cursor c) {
         String line = devices.readLine();
         c.skipWs();
         String ref = c.readRefToken();
@@ -1203,7 +691,7 @@ public final class LineInterp {
         }
     }
 
-    private void doLock(Cursor c) {
+    void doLock(Cursor c) {
         while (!c.atEnd()) {
             c.skipWs();
             if (c.atEnd() || c.startsCommand()) {
@@ -1237,7 +725,7 @@ public final class LineInterp {
         test = true;
     }
 
-    private void doNew(Cursor c) {
+    void doNew(Cursor c) {
         List<String> names = new ArrayList<>();
         while (!c.atEnd()) {
             c.skipWs();
@@ -1258,7 +746,7 @@ public final class LineInterp {
         store.newScope(names.isEmpty() ? null : names);
     }
 
-    private void doMerge(Cursor c) {
+    void doMerge(Cursor c) {
         c.skipWs();
         String dst = c.readRefToken();
         c.skipWs();
@@ -1272,7 +760,7 @@ public final class LineInterp {
         store.merge(dp, dp.get(0).startsWith("^"), sp, sp.get(0).startsWith("^"));
     }
 
-    private void doFor(Cursor c) {
+    void doFor(Cursor c) {
         c.skipWs();
         String var = c.readRefToken();
         c.skipWs();
