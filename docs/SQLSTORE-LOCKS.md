@@ -54,3 +54,18 @@ Notes: 5s budget no longer hangs (was a `LockQueue.releaseWrite` hold-leak after
 - `SqlLockMeasureSmoke` — uncontended / timeout / serial
 - `SqlLockStressSmoke` — 200-thread p50/p99
 - `SqlLockMultiKeySmoke` — key isolation + parallel keys
+
+
+## Assert polarity checklist (tests)
+
+`StoreApi.lockAcquire` returns **`true` = held**, **`false` = denied/timeout**.
+
+| You want to assert | Write | Wrong (inverted) |
+|--------------------|-------|------------------|
+| acquire succeeded | `if (!st.lockAcquire(k, pid, t)) throw …` | `if (st.lockAcquire(…)) throw` |
+| other pid stayed blocked | `if (st.lockAcquire(k, other, t)) throw …` | `if (!st.lockAcquire(…)) throw` |
+| reacquire is idempotent | `if (!st.lockAcquire(k, same, t)) throw …` | `if (st.lockAcquire(…)) throw` |
+
+Known bug fixed: `TStartUndoSmoke` inverted reacquire (`if (lockAcquire) throw`).
+
+`MjvmBench.check(label, ok, detail)` **throws** on `!ok` (targets are enforced).
