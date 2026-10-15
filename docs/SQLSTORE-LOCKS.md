@@ -69,3 +69,13 @@ Notes: 5s budget no longer hangs (was a `LockQueue.releaseWrite` hold-leak after
 Known bug fixed: `TStartUndoSmoke` inverted reacquire (`if (lockAcquire) throw`).
 
 `MjvmBench.check(label, ok, detail)` **throws** on `!ok` (targets are enforced).
+
+
+## Transaction isolation notes (#122)
+
+| Topic | Behavior |
+|-------|----------|
+| **Provisional SET** | Visible to other processes/threads before TCOMMIT (no SQL isolation). TROLLBACK restores prior value or **KILL**s a new node. |
+| **Per-JOB undo** | Each `LineInterp` has its own `LineTxLocks` (`TStartJobSmoke`). |
+| **Phantom `$ORDER`** | A concurrent insert can appear mid-walk; M has no cursor isolation. Documented, not a bug. |
+| **Cdb2 LOCK** | `mlocks` + `LockQueue` (PR #127) — same polarity as SqlStore. |
