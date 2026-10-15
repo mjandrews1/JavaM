@@ -55,7 +55,9 @@ final class LineTxLocks {
                 List<String> path = (List<String>) u[0];
                 MValue old = (MValue) u[1];
                 boolean glob = path.get(0).startsWith("^");
-                if (old == null) {
+                // Undefined pre-image is MValue.EMPTY (identity) or null → KILL.
+                // set(EMPTY) would leave the node defined ($DATA=1) — #122 leak.
+                if (old == null || old == MValue.EMPTY) {
                     store.kill(path, glob);
                 } else {
                     store.set(path, glob, old);
