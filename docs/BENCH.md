@@ -26,7 +26,7 @@ One row per metric: **unit · reproduce command · stacks**. Baseline column liv
 | 11 | Lock stress P50/P99 | ms | `java jvmumps.SqlLockStressSmoke` | JavaM | 0 timeouts |
 | 12 | Startup to first output | s | `java mjvm.cli.Mjvm -V` | both | baseline |
 | 13 | Peak RSS (make smoke) | s / KB | `make smoke` + `/usr/bin/time` | both | baseline |
-| 14 | RSM oracle compare | ratio | RSM corpus runner (same `tests/conformance.json`) | RSM | pending #99 |
+| 14 | RSM oracle compare | ratio | `python3 tools/rsm_corpus_score.py --rsm /home/mark/rsm-fresh/rsm` | RSM | harness note in Cross-stack; routine runner follow-up |
 
 **Capture (fixed host):**
 
@@ -89,14 +89,21 @@ Full matrix dump: [`docs/BENCH-baseline.md`](BENCH-baseline.md) (`tools/capture_
 
 ## Cross-stack compare (#99)
 
-| Stack | IR/interp arith | Store walk | Notes |
-|-------|-----------------|------------|-------|
-| JavaM `LineInterp` | | | |
-| mJVM `IrMachine` | | | |
-| mJVM class | | | |
-| RSM oracle | | | |
+Corpus wall + score on **U01** (2026-10-15) — same `tests/conformance.json`.
 
-*Table to be filled on U01 with the same matrix (#99).*
+| Stack | Surface | Score | Wall | cases/s | Notes |
+|-------|---------|------:|-----:|--------:|-------|
+| JavaM | `LineEngine` / `LineInterp` | **131 / 8 / 0** | **43 ms** | 3236 | `mjvm.bench.CrossStackBench` |
+| mJVM | `MjvmCorpusScore` (IR) | **131 / 8 / 0** | 90 ms | 1544 | includes JVM startup |
+| mJVM | `MjvmNativeScore` | **131 / 8 / 0** | 90 ms | 1544 | native path |
+| RSM oracle | `rsm -x` (process/case) | 101 / 38 / 0 | 583 ms | 238 | **harness-limited** (see below) |
+
+**RSM note (row 14):** one-shot `rsm -x` cannot express corpus fragments that need labels / `DO` tags / multi-statement context (Z12/Z13 syntax). Those 38 misses are **harness**, not engine regressions — a routine-based runner is the fair oracle harness (follow-up). Wall ratio for the common path:
+
+- JavaM LineEngine / RSM `-x` wall = **0.043 / 0.583 ≈ 0.074×** (RSM pays process spawn per case)
+- Per-case comparable subset should use a **persistent RSM job** before quoting a throughput ratio
+
+**Class unroll (row 5):** filled — U01 **0.32×** class/IR at unroll x200 (64KB-safe).
 
 ---
 
