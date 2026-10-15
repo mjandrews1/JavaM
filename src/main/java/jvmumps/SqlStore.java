@@ -290,6 +290,8 @@ public final class SqlStore implements StoreApi {
     /**
      * LOCK + acquire. In-process threads FIFO-queue on {@link LockQueue};
      * cross-process exclusive ownership is the {@code mlocks} table.
+     * <p><b>Polarity:</b> {@code true} = held (idempotent reacquire);
+     * {@code false} = timed out. Do not invert in tests.
      * Returns false if {@code timeoutMs} elapses before both are held.
      */
     public boolean lockAcquire(String key, String pid, long timeoutMs) {

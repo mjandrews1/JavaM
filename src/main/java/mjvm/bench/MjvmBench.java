@@ -49,6 +49,8 @@ public final class MjvmBench {
 
         // --- IR loops (JMP) — class emitter is straight-line (M2) ---
         for (String kind : new String[] {"inc", "cat", "store"}) {
+            // warmup — cold JIT/interpreter startup fails the IR floor unfairly
+            IrMachine.run(loopProg(Math.min(iters, 20_000), kind), new MRuntime(new MStore()));
             List<Ir> loop = loopProg(iters, kind);
             MRuntime rt = new MRuntime(new MStore());
             long t1 = System.nanoTime();
@@ -179,13 +181,23 @@ public final class MjvmBench {
         System.out.printf("%-28s IR %8.2f ms %10.0f it/s | class %8.2f ms %10.0f it/s | %.2fx%n",
                 name, irNs / 1e6, irOps, clNs / 1e6, clOps, speedup);
 
-        check(name + " IR floor", irOps >= TARGET_IR_ARITH_OPS || name.startsWith("concat"),
-                (long) irOps + " it/s vs target " + (long) TARGET_IR_ARITH_OPS);
+        double floor = name.contains("cat")
+                ? TARGET_IR_CAT_OPS
+                : TARGET_IR_ARITH_OPS;
+        check(name + " IR floor", irOps >= floor,
+                (long) irOps + " it/s vs target " + (long) floor);
         check(name + " class runs", speedup > 0,
                 String.format("%.2fx IR/class (IR machine wins until JIT+indy C2)", speedup));
     }
 
+    /**
+     * Enforce a bench assertion. Failure prints {@code FAIL} and throws so
+     * CI / make bench cannot go green on a red target.
+     */
     static void check(String label, boolean ok, String detail) {
         System.out.printf("  [%s] %s — %s%n", ok ? "PASS" : "FAIL", label, detail);
+        if (!ok) {
+            throw new IllegalStateException("MjvmBench FAIL: " + label + " — " + detail);
+        }
     }
 }
