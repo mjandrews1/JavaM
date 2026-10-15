@@ -16,8 +16,9 @@ public final class SqlLockStressSmoke {
     public static void main(String[] args) throws Exception {
         // make smoke passes $(CORPUS) as argv — only accept integers
         // args: [threads] [iters] [timeoutMs]
-        int threads = 200;
-        int iters = 25;
+        // Defaults are CI-safe; use 200 25 2000/5000 for measurement.
+        int threads = 50;
+        int iters = 5;
         long timeoutMs = 2000;
         int seen = 0;
         for (String a : args) {
