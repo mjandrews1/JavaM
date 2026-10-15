@@ -1,5 +1,7 @@
 # BENCH — JavaM + mJVM performance review (jvmumps#97)
 
+**Status:** v0.5.0 review cycle · findings: [PERF-REVIEW.md](PERF-REVIEW.md)
+
 **Status:** baseline capture in progress · **Milestone:** [v0.5.0](https://github.com/mjandrews1/JavaM/milestone/2)  
 **Roadmap:** [ROADMAP-0.5.0.md](ROADMAP-0.5.0.md) · **Harness:** `mjvm.bench.PerfMatrix` · `tools/perf_review.sh`
 
