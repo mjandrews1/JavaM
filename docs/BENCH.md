@@ -17,7 +17,7 @@ One row per metric: **unit · reproduce command · stacks**. Baseline column liv
 | 2 | Corpus score | MATCH/ERR/MISS | `java jvmumps.MjvmCorpusScore` / `MjvmNativeScore` | JavaM, mJVM | **131 / 0 / 8** |
 | 3 | IR arith loop | it/s | `java mjvm.bench.MjvmBench 50000` | mJVM | ≥ 1e6 |
 | 4 | IR cat loop | it/s | `java mjvm.bench.MjvmBench 50000` | mJVM | ≥ 1e5 |
-| 5 | Class vs IR speedup | × | `java mjvm.bench.MjvmBench 50000` (unroll pair) | mJVM | class runs |
+| 5 | Class vs IR speedup | × | `java mjvm.bench.MjvmBench 50000` (unroll x200) | mJVM | class runs · 64KB method limit |
 | 6 | Compile latency | ms | `java mjvm.bench.MjvmBench 50000` | mJVM | ≤ 50 |
 | 7 | SET/GET bulk | ops/s | `java mjvm.bench.PerfMatrix 50000` | JavaM, mJVM | baseline |
 | 8 | `$ORDER` walk | ms / keys | `java mjvm.bench.PerfMatrix 50000` | JavaM, mJVM | baseline |
@@ -60,7 +60,7 @@ Captured with `mjvm.bench.PerfMatrix 50000` on the v0.4.0 tree.
 
 ### U01 (x86_64 · 6 cpus · Ubuntu OpenJDK 25) — 2026-10-15 · **host of record**
 
-Full matrix dump: [`docs/BENCH-baseline.md`](BENCH-baseline.md) (`tools/capture_baseline.sh`). Rows 5 (class unroll) and 14 (RSM) pending #99/#101.
+Full matrix dump: [`docs/BENCH-baseline.md`](BENCH-baseline.md) (`tools/capture_baseline.sh`). Row 5 class unroll filled (0.32× on U01; unroll x200 is 64KB-safe). Row 14 (RSM) pending #99.
 
 `./tools/perf_review.sh 50000` · host `Linux 7.0.0-31-generic` · **baseline of record**
 

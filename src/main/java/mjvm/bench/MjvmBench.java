@@ -64,7 +64,8 @@ public final class MjvmBench {
 
         // --- straight-line unroll: IR vs generated class ---
         // javac 64KB method limit — keep unroll modest
-        benchPair("unroll inc x1000", unrollProg(1000, "inc"), 1000);
+        // 1000-op unroll exceeds the JVM 64KB method limit (code too large); 200 is safe
+        benchPair("unroll inc x200", unrollProg(200, "inc"), 200);
         benchPair("unroll cat x200", unrollProg(200, "cat"), 200);
 
         double cMs = compileMs;
