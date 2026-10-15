@@ -7,6 +7,27 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
+## [0.4.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0) — 2026-10-15
+
+**GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0
+
+### Added
+- **`Cdb2Store`** — Comdb2 `StoreApi` via persistent `tools/cdb2pipe` (cdb2api). Grouped `SETB` multi-row inserts (BATCH=300).
+- **`Stores` factory** + `mjvm --store cdb2|sqlite|memory` (mesh/SQL plane).
+- `Cdb2MeshBench` / `Cdb2OrderBench` / `Cdb2OrderParitySmoke` / `MultiLevelOrderSmoke`.
+
+### Fixed
+- **Multi-level `$ORDER`** now skips the cursor subtree (`SqlStore` + `Cdb2Store`). Forward walk no longer re-returns the same subscript forever (ydb-mesh `related()` hang).
+- Cdb2 smokes skip cleanly when no `cdb2pipe` (CI `make smoke` stays green).
+
+### Contract
+- corpus: **131 / 8 / 0** unchanged (no `expected` edits).
+- Dafny: unchanged.
+
+### Known gaps
+- Cdb2 unbatched durable `$SET` ~120/s; use write-buffer / `flush()`.
+- No FileMan Tier A gate yet (not 1.0).
+
 ## [0.3.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0) — 2026-10-13
 
 **GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0
@@ -95,6 +116,7 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 
 Every user-visible PR should append here (PR template checkbox).
 
+[0.4.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0
 [0.3.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.1.0
