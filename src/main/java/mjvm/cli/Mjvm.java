@@ -8,6 +8,7 @@ import java.util.List;
 import jvmumps.MStore;
 import jvmumps.SqlStore;
 import jvmumps.StoreApi;
+import jvmumps.Stores;
 import mjvm.compiler.ClassEmitter;
 import mjvm.compiler.MFrontend;
 import mjvm.ir.Ir;
@@ -29,6 +30,7 @@ import mjvm.runtime.MRuntime;
  * Extended (mJVM):
  *   mjvm --class -c '…'  compile to .class then run (M2)
  *   mjvm file.m          run a source file
+ *   mjvm --store cdb2|sqlite|memory   pick StoreApi backend (mesh/SQL plane = cdb2)
  */
 public final class Mjvm {
     public static final String VERSION = "V0.3.0 (mJVM)";
@@ -49,6 +51,7 @@ public final class Mjvm {
         String envName = "manager";
         String volume = null;
         String dbFile = null;
+        String storeKind = null;
         Integer maxJobs = null;
         Integer blockSize = null;
         Integer dbSize = null;
@@ -60,6 +63,9 @@ public final class Mjvm {
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             switch (a) {
+                case "--store" -> {
+                    storeKind = args[++i];
+                }
                 case "-V" -> {
                     System.out.println(VERSION);
                     return 0;
@@ -133,8 +139,8 @@ public final class Mjvm {
             case "create" -> doCreate(volume, blockSize, dbSize, mapSize, envName, dbFile);
             case "start" -> doStart(maxJobs == null ? 16 : maxJobs, gbuf, rbuf, dbFile, envName);
             case "kill" -> doKill(dbFile);
-            case "run" -> doRun(code, file, useClass, dbFile);
-            default -> doDirect(dbFile, code, envName, restricted, useClass);
+            case "run" -> doRun(code, file, useClass, dbFile, storeKind);
+            default -> doDirect(storeKind, dbFile, code, envName, restricted, useClass);
         };
     }
 
@@ -265,27 +271,23 @@ public final class Mjvm {
         return 0;
     }
 
-    static int doRun(String code, String file, boolean useClass, String dbFile) throws Exception {
+    static int doRun(String code, String file, boolean useClass, String dbFile, String storeKind) throws Exception {
         if (code == null && file != null) {
             code = Files.readString(Path.of(file));
         }
         if (code == null) {
             code = new String(System.in.readAllBytes());
         }
-        StoreApi store = dbFile != null && Files.exists(Path.of(dbFile))
-                ? new SqlStore(dbFile)
-                : new MStore();
+        StoreApi store = Stores.open(storeKind, dbFile);
         MRuntime rt = new MRuntime(store);
         runCode(rt, code, useClass);
         System.out.print(rt.output());
         return 0;
     }
 
-    static int doDirect(String dbFile, String code, String envName,
+    static int doDirect(String storeKind, String dbFile, String code, String envName,
                         boolean restricted, boolean useClass) throws Exception {
-        StoreApi store = dbFile != null && Files.exists(Path.of(dbFile))
-                ? new SqlStore(dbFile)
-                : new MStore();
+        StoreApi store = Stores.open(storeKind, dbFile);
         MRuntime rt = new MRuntime(store);
         if (code != null) {
             runCode(rt, code, useClass);
@@ -297,7 +299,8 @@ public final class Mjvm {
         }
         System.out.println(BANNER.trim());
         System.out.println("direct mode · env=" + envName
-                + (dbFile != null ? " · db=" + dbFile : " · memory store"));
+                + " · store=" + Stores.describe(store)
+                + (dbFile != null ? " · db=" + dbFile : ""));
         // simple REPL for drop-in feel
         Console cons = System.console();
         if (cons != null) {

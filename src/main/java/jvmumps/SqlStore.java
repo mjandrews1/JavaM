@@ -194,13 +194,18 @@ public final class SqlStore implements StoreApi {
             parentSk.append(collateKey(parent.get(i)));
         }
         String skPrefix = parentSk.length() == 0 ? "" : parentSk.toString() + SEP;
-        String curSk = cur.isEmpty() ? (dir > 0 ? "" : "\uffff") : collateKey(cur);
+        String hiMark = "\uffff";
+        String curSk = cur.isEmpty() ? "" : collateKey(cur);
+        // Skip cursor subtree on forward walk (multi-level $ORDER).
+        String skBound = dir > 0
+                ? (cur.isEmpty() ? skPrefix : skPrefix + curSk + SEP + hiMark)
+                : (cur.isEmpty() ? skPrefix + hiMark : skPrefix + curSk);
         try (PreparedStatement ps = conn.prepareStatement(dir > 0
                 ? "SELECT k FROM nodes WHERE k>=? AND k<? AND sk>? ORDER BY sk LIMIT 1"
                 : "SELECT k FROM nodes WHERE k>=? AND k<? AND sk<? ORDER BY sk DESC LIMIT 1")) {
             ps.setString(1, lo);
             ps.setString(2, hi);
-            ps.setString(3, skPrefix + curSk);
+            ps.setString(3, skBound);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     String k = rs.getString(1);
