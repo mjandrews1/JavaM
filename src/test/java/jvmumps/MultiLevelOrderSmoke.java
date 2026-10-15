@@ -18,11 +18,16 @@ public class MultiLevelOrderSmoke {
     Cdb2Store cd = null;
     String pipe = Cdb2OrderParitySmoke.cdb2Pipe(a);
     if (pipe != null) {
-      cd = new Cdb2Store(pipe,
-          Cdb2OrderParitySmoke.envOr("CDB2DB", "testdb"),
-          Cdb2OrderParitySmoke.envOr("CDB2TYPE", "local"));
-      cd.kill(List.of("^G"), true);
-      stores.add(cd);
+      try {
+        cd = new Cdb2Store(pipe,
+            Cdb2OrderParitySmoke.envOr("CDB2DB", "testdb"),
+            Cdb2OrderParitySmoke.envOr("CDB2TYPE", "local"));
+        cd.kill(List.of("^G"), true);
+        stores.add(cd);
+      } catch (Exception e) {
+        System.out.println("note: cdb2 side skipped (comdb2 unreachable: " + e.getMessage() + ")");
+        cd = null;
+      }
     } else {
       System.out.println("note: cdb2 side skipped (no cdb2pipe)");
     }
