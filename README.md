@@ -5,6 +5,18 @@
 **Sibling:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps / C3Mumps — same full-M charter).
 **Release:** [**v0.4.0**](https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0) · see [CHANGELOG.md](CHANGELOG.md).
 
+### v0.4.0 fleet smoke (2026-10-15)
+
+| Host | `make smoke` | `MjvmNativeScore` | `SqlLockStressSmoke` |
+|------|--------------|-------------------|----------------------|
+| Mac | 99 / 99 OK | 131 / 8 / 0 | 50×5 · 0 timeouts |
+| U01 | 99 / 99 OK | 131 / 8 / 0 | 50×5 · 0 timeouts |
+| U02 | 99 / 99 OK | 131 / 8 / 0 | 50×5 · 0 timeouts |
+| `u01-javam-ci` (LXC) | 99 / 99 OK | 131 / 8 / 0 | auto 8×2 · 0 timeouts |
+| `u01-mjvm-bench` (LXC) | 99 / 99 OK | 131 / 8 / 0 | auto 8×2 · 0 timeouts |
+
+`SqlLockStressSmoke` auto-sizes for the host (calibration + downshift on slow LXC).
+
 Two products, one repo family. **Both are complete M implementations** with **RSM-equivalent scope**, using RSM as a **model** — not a line-by-line or file-by-file port.
 
 | Part | Name | What it is |
