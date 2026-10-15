@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Comdb2-backed StoreApi via persistent cdb2pipe.
@@ -31,6 +32,9 @@ public final class Cdb2Store implements StoreApi {
     /** Write buffer — guarded by {@code this} (same monitor as cmd/flush). */
     private final java.util.ArrayList<String> pending = new java.util.ArrayList<>();
     private volatile boolean closed;
+    /** In-process FIFO waiters (same policy as SqlStore LockQueue). */
+    private final ConcurrentHashMap<String, LockQueue> lockQueues = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> lastWaitMs = new ConcurrentHashMap<>();
     private static final int BATCH = 300; // Comdb2 ~1800 bind limit (300 rows x 6)
 
     public Cdb2Store(String pipePath, String db, String type) throws Exception {
@@ -225,6 +229,68 @@ public final class Cdb2Store implements StoreApi {
         if (v != MValue.EMPTY) set(dst, dGlobal, v);
     }
 
+
+    /**
+     * Cross-process LOCK via Comdb2 {@code mlocks} + in-process {@link LockQueue}.
+     * Same contract as {@link SqlStore#lockAcquire}: idempotent reacquire, full
+     * unlock on {@link #lockRelease}.
+     */
+    @Override
+    public boolean lockAcquire(String key, String pid, long timeoutMs) {
+        long t0 = System.currentTimeMillis();
+        long deadline = t0 + Math.max(0, timeoutMs);
+        LockQueue q = lockQueues.computeIfAbsent(key, k -> LockQueue.oneWriter(64));
+        if (q.heldByCurrentWriter(pid)) {
+            return true;
+        }
+        boolean ok = false;
+        while (true) {
+            boolean ins = false;
+            synchronized (this) {
+                String r = cmd("LOCKA\t" + hex(pid) + "\t" + hex(key));
+                ins = r.startsWith("OK");
+            }
+            if (ins) {
+                ok = true;
+                break;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                break;
+            }
+            try {
+                Thread.sleep(2);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (ok) {
+            long left = deadline - System.currentTimeMillis();
+            if (!q.acquireWrite(pid, Math.max(1, left))) {
+                synchronized (this) {
+                    cmd("LOCKR\t" + hex(pid) + "\t" + hex(key));
+                }
+                ok = false;
+            }
+        }
+        lastWaitMs.put(key, System.currentTimeMillis() - t0);
+        return ok;
+    }
+
+    @Override
+    public void lockRelease(String key, String pid) {
+        synchronized (this) {
+            try {
+                cmd("LOCKR\t" + hex(pid) + "\t" + hex(key));
+            } catch (Exception ignored) {
+            }
+        }
+        LockQueue q = lockQueues.get(key);
+        if (q != null) {
+            q.releaseWriteAll(pid);
+        }
+    }
+
     /** Idempotent close — always reaps the cdb2pipe process. */
     public void close() {
         synchronized (this) {
@@ -232,6 +298,8 @@ public final class Cdb2Store implements StoreApi {
                 return;
             }
             closed = true;
+            lockQueues.clear();
+            lastWaitMs.clear();
             try {
                 flushLocked();
                 cmd("QUIT");

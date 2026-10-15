@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <cdb2api.h>
+#include <time.h>
 
 static cdb2_hndl_tp *db;
 static long next_id = 1;
@@ -113,6 +114,13 @@ static void ensure_schema(void) {
     cdb2_run_statement(db, "CREATE INDEX IF NOT EXISTS mnodes_sk ON mnodes(sk)");
     while (cdb2_next_record(db) == CDB2_OK) {
     }
+    cdb2_run_statement(db,
+        "CREATE TABLE IF NOT EXISTS mlocks("
+        "lk VARCHAR(255) PRIMARY KEY,"
+        "pid VARCHAR(64),"
+        "at INTEGER)");
+    while (cdb2_next_record(db) == CDB2_OK) {
+    }
 }
 
 static int upsert_row(const char *k, int kl, const char *sk, int sl,
@@ -131,6 +139,70 @@ static int upsert_row(const char *k, int kl, const char *sk, int sl,
     }
     drain();
     return 0;
+}
+
+
+/* LOCKA <hexpid> <hexlk> — try insert; OK if held by this pid or inserted.
+ * LOCKR <hexpid> <hexlk> — delete if pid matches.
+ */
+static void cmd_locka(char **tok, int ntok) {
+    if (ntok < 3) { printf("ERR bad LOCKA\n"); return; }
+    char *pid, *lk;
+    int pl = unhex(tok[1], &pid), ll = unhex(tok[2], &lk);
+    if (pl < 0 || ll < 0) { printf("ERR hex\n"); return; }
+    int64_t now = (int64_t)time(NULL);
+    const char *nn[] = {"lk", "pid", "at"};
+    int tt[] = {CDB2_CSTRING, CDB2_CSTRING, CDB2_INTEGER};
+    const void *vv[] = {lk, pid, &now};
+    int ls[] = {ll, pl, (int)sizeof(int64_t)};
+    cdb2_clearbindings(db);
+    for (int i = 0; i < 3; i++) {
+        cdb2_bind_param(db, nn[i], tt[i], vv[i], ls[i]);
+    }
+    if (cdb2_run_statement(db,
+            "INSERT INTO mlocks(lk,pid,at) VALUES(@lk,@pid,@at)") == 0) {
+        drain();
+        free(pid); free(lk);
+        printf("OK\n");
+        return;
+    }
+    drain();
+    /* exists — check owner */
+    const char *n2[] = {"lk", "pid"};
+    int t2[] = {CDB2_CSTRING, CDB2_CSTRING};
+    const void *v2[] = {lk, pid};
+    int l2[] = {ll, pl};
+    cdb2_clearbindings(db);
+    for (int i = 0; i < 2; i++) cdb2_bind_param(db, n2[i], t2[i], v2[i], l2[i]);
+    if (cdb2_run_statement(db, "SELECT pid FROM mlocks WHERE lk=@lk AND pid=@pid") == 0) {
+        if (first_row()) {
+            drain();
+            free(pid); free(lk);
+            printf("OK\n");
+            return;
+        }
+        drain();
+    }
+    free(pid); free(lk);
+    printf("FAIL\n");
+}
+
+static void cmd_lockr(char **tok, int ntok) {
+    if (ntok < 3) { printf("ERR bad LOCKR\n"); return; }
+    char *pid, *lk;
+    int pl = unhex(tok[1], &pid), ll = unhex(tok[2], &lk);
+    if (pl < 0 || ll < 0) { printf("ERR hex\n"); return; }
+    const char *n2[] = {"lk", "pid"};
+    int t2[] = {CDB2_CSTRING, CDB2_CSTRING};
+    const void *v2[] = {lk, pid};
+    int l2[] = {ll, pl};
+    cdb2_clearbindings(db);
+    for (int i = 0; i < 2; i++) cdb2_bind_param(db, n2[i], t2[i], v2[i], l2[i]);
+    if (cdb2_run_statement(db, "DELETE FROM mlocks WHERE lk=@lk AND pid=@pid") == 0) {
+        drain();
+    }
+    free(pid); free(lk);
+    printf("OK\n");
 }
 
 static void cmd_set(char **tok, int ntok) {
@@ -384,6 +456,8 @@ int main(int argc, char **argv) {
         if (ntok < 1) continue;
         if (!strcmp(tok[0], "QUIT")) break;
         if (!strcmp(tok[0], "PING")) { printf("PONG\n"); }
+        else if (!strcmp(tok[0], "LOCKA")) cmd_locka(tok, ntok);
+        else if (!strcmp(tok[0], "LOCKR")) cmd_lockr(tok, ntok);
         else if (!strcmp(tok[0], "SET")) cmd_set(tok, ntok);
         else if (!strcmp(tok[0], "SETB")) cmd_setb(tok, ntok);
         else if (!strcmp(tok[0], "BEGIN")) {
