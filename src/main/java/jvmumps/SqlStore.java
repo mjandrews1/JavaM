@@ -233,14 +233,36 @@ public final class SqlStore implements StoreApi {
         return order(path, global, dir);
     }
 
-    /** Drop locks older than ttlMs (stale holders). */
+    /** Drop locks older than ttlMs (stale holders + their in-process queue holds). */
     public int lockSweep(long ttlMs) {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM mlocks WHERE at < ?")) {
-            ps.setLong(1, System.currentTimeMillis() - ttlMs);
-            return ps.executeUpdate();
-        } catch (Exception e) {
-            return 0;
+        long cutoff = System.currentTimeMillis() - ttlMs;
+        synchronized (conn) {
+            List<String[]> stale = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT lk, pid FROM mlocks WHERE at < ?")) {
+                ps.setLong(1, cutoff);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        stale.add(new String[] {rs.getString(1), rs.getString(2)});
+                    }
+                }
+            } catch (Exception e) {
+                return 0;
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM mlocks WHERE at < ?")) {
+                ps.setLong(1, cutoff);
+                int n = ps.executeUpdate();
+                for (String[] sp : stale) {
+                    LockQueue q = lockQueues.get(sp[0]);
+                    if (q != null) {
+                        q.releaseWriteAll(sp[1]);
+                    }
+                }
+                return n;
+            } catch (Exception e) {
+                return 0;
+            }
         }
     }
 
