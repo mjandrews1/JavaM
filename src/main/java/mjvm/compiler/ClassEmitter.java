@@ -28,12 +28,20 @@ public final class ClassEmitter {
         if (javac == null) {
             throw new MError("no system Java compiler (need JDK, not JRE)");
         }
-        int rc = javac.run(null, null, null,
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream eps = new java.io.PrintStream(err, true);
+        int rc = javac.run(null, eps, eps,
                 "-classpath", System.getProperty("java.class.path"),
                 "-d", workDir.toString(),
                 javaFile.toString());
         if (rc != 0) {
-            throw new MError("javac failed for " + className);
+            String msg = err.toString().trim();
+            // JVM 64KB method limit: "code too large" on fat unrolls
+            if (msg.contains("code too large") || msg.contains("too large")) {
+                throw new MError("javac failed for " + className
+                        + " (method too large — reduce unroll / split run()): " + msg);
+            }
+            throw new MError("javac failed for " + className + ": " + msg);
         }
         return className;
     }
