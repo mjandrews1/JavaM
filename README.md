@@ -17,7 +17,7 @@
 
 `SqlLockStressSmoke` auto-sizes for the host (calibration + downshift on slow LXC).
 
-**Next:** [docs/ROADMAP-0.5.0.md](docs/ROADMAP-0.5.0.md) — perf review cycle (milestone [v0.5.0](https://github.com/mjandrews1/JavaM/milestone/2)).
+**Next:** [docs/ROADMAP-0.5.0.md](docs/ROADMAP-0.5.0.md) — perf review cycle (milestone [v0.5.0](https://github.com/mjandrews1/JavaM/milestone/2)) · [docs/BENCH.md](docs/BENCH.md).
 
 Two products, one repo family. **Both are complete M implementations** with **RSM-equivalent scope**, using RSM as a **model** — not a line-by-line or file-by-file port.
 
