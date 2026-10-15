@@ -161,6 +161,27 @@ java -cp build:lib/... jvmumps.Cdb2OrderBench tools/cdb2pipe testdb local 2000
 java jvmumps.SqlLockStressSmoke          # adaptive 50×5 or 8×2
 ```
 
+## Footprint (#101)
+
+U01 · OpenJDK 21 · `java mjvm.bench.FootprintBench 200 50000` + `/usr/bin/time`
+
+| Metric | U01 | Mac (aarch64) | Notes |
+|--------|----:|--------------:|-------|
+| Compile 1 line | **0.043 ms** | 0.031 ms | well under 50 ms |
+| Compile 200-line program | **2.39 ms** | 1.62 ms | 404 IR ops |
+| Class emit unroll ×200 | **677 ms** | 443 ms | javac-driven (heavy) |
+| Class size | 31,799 B | 31,795 B | source 73 KB |
+| Heap after 50k IR store loop | 12 → 3 MB | 9 → 4 MB | after `System.gc()` |
+| Process RSS (FootprintBench) | **178 MB** | n/a (no /proc) | |
+| Startup `mjvm -V` | **0.02 s · 43 MB** | 0.02 s | `/usr/bin/time` |
+| CorpusRunner | 0.04 s · 47 MB | | 139 cases |
+| MjvmNativeScore | 0.09 s · 61 MB | | 131/8/0 |
+| GC collections (sample JVM) | 2 | 8 | note only |
+
+**Class emit** dominates compile-to-run when `--class` is used (~0.5–0.7 s / unroll) — frontend-only is µs–ms.
+
+**Heap flags:** default JVM; no `JAVA_TOOL_OPTIONS`. `make bench` runs PerfMatrix + Footprint + StoreLock.
+
 ## Findings (living)
 
 1. **IR arith is the strength** — 2–4M simple loop it/s; well above the 1M floor.

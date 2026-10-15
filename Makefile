@@ -83,8 +83,16 @@ run: all
 mjvm: all
 	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/main/java/mjvm/*/*.java
 
-bench: mjvm
+bench: mjvm all
+	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/test/java/jvmumps/*.java
+	@echo "=== MjvmBench ==="
 	$(JAVA) -cp $(CP) mjvm.bench.MjvmBench 100000
+	@echo "=== PerfMatrix ==="
+	$(JAVA) -cp $(CP) mjvm.bench.PerfMatrix 50000
+	@echo "=== Footprint ==="
+	$(JAVA) -cp $(CP) mjvm.bench.FootprintBench 200 50000
+	@echo "=== StoreLock ==="
+	$(JAVA) -cp $(CP) jvmumps.StoreLockBench 2000 32
 
 install:
 	PREFIX=$(PREFIX) ./install.sh
