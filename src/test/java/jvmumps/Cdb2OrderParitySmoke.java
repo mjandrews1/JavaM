@@ -4,22 +4,30 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-/** $ORDER sequence must match SqlStore collation (Cdb2Store shim). */
+/**
+ * $ORDER sequence must match SqlStore collation (Cdb2Store shim).
+ * Skips when no Comdb2 pipe (CI has no testdb).
+ */
 public class Cdb2OrderParitySmoke {
   public static void main(String[] a) throws Exception {
+    String pipe = cdb2Pipe(a);
+    if (pipe == null) {
+      System.out.println("SKIP Cdb2OrderParitySmoke (no cdb2pipe; set CDB2PIPE)");
+      return;
+    }
+    String db = envOr("CDB2DB", "testdb");
+    String type = envOr("CDB2TYPE", "local");
     int n = 200;
     File tmp = File.createTempFile("par", ".db");
     tmp.deleteOnExit();
     SqlStore sq = new SqlStore(tmp.getAbsolutePath());
-    Cdb2Store cd = new Cdb2Store(
-        a.length > 0 ? a[0] : "tools/cdb2pipe",
-        a.length > 1 ? a[1] : "testdb",
-        a.length > 2 ? a[2] : "local");
+    Cdb2Store cd = new Cdb2Store(pipe, db, type);
     cd.kill(List.of("^T"), true);
     for (int i = 0; i < n; i++) {
       sq.set(List.of("^T", String.valueOf(i)), true, MValue.ofNumber(i));
       cd.set(List.of("^T", String.valueOf(i)), true, MValue.ofNumber(i));
     }
+    cd.flush();
     List<String> s1 = walk(sq);
     List<String> s2 = walk(cd);
     if (s1.size() != n || s2.size() != n) {
@@ -31,6 +39,22 @@ public class Cdb2OrderParitySmoke {
     System.out.println("CDB2 ORDER PARITY OK n=" + n + " first=" + s1.get(0) + " last=" + s1.get(n - 1));
     sq.close();
     cd.close();
+  }
+
+  /** Resolve cdb2pipe; ignore smoke-suite argv (CORPUS path). Null if absent. */
+  static String cdb2Pipe(String[] a) {
+    String pipe = System.getenv("CDB2PIPE");
+    if (pipe == null || pipe.isEmpty()) pipe = "tools/cdb2pipe";
+    // make smoke passes $(CORPUS) — never treat a data file as the pipe
+    if (a != null && a.length > 0 && !a[0].endsWith(".json") && new File(a[0]).canExecute()) {
+      pipe = a[0];
+    }
+    return new File(pipe).canExecute() ? pipe : null;
+  }
+
+  static String envOr(String k, String d) {
+    String v = System.getenv(k);
+    return v == null || v.isEmpty() ? d : v;
   }
 
   static String firstDiff(List<String> a, List<String> b) {
