@@ -109,15 +109,57 @@ Corpus wall + score on **U01** (2026-10-15) — same `tests/conformance.json`.
 
 ## Store + lock (#100)
 
-| Op | SQLite `SqlStore` | Comdb2 `Cdb2Store` |
-|----|-------------------|---------------------|
-| insert 20k | 2.4 s | 13.4 s (grouped) |
-| `$ORDER` walk 20k | 64.7 s | **10.1 s** |
-| mesh `related()` 50 hubs | — | 136 ms |
+### Bulk ops (U01, `jvmumps.StoreLockBench`, n=2000)
 
-More store rows: `Cdb2OrderBench` / `Cdb2MeshBench` / `SqlOrderBench` (U01).
+| Op | MStore | SqlStore | Cdb2 (grouped) |
+|----|-------:|---------:|---------------:|
+| SET | 291K/s | **6.4K/s** | ~900/s raw · grouped SETB ~2K/s |
+| GET | 1.77M/s | **36K/s** | (order-path RTT) |
+| `$ORDER` walk 2k | 426 ms | **732 ms** | **854 ms** (2k) |
+| KILL subtree | ~0 ms | 2.7 ms | |
 
----
+Cdb2 20k comparison (earlier): insert 13.4 s · walk **10.1 s** vs SQLite 64.7 s.
+
+### TSTART / TCOMMIT / TROLLBACK (SqlStore undo, per txn)
+
+| Rows in undo | empty TSTART+TCOMMIT | TCOMMIT | TROLLBACK |
+|-------------:|---------------------:|--------:|----------:|
+| 0 | 0.005 ms | — | — |
+| 10 | — | 0.07 ms | 0.04 ms |
+| 100 | — | 0.21 ms | 0.20 ms |
+| 500 | — | 0.80 ms | 0.82 ms |
+
+Undo cost is **O(rows)** on rollback/commit fold — linear and small.
+
+### Contention sweep (one key, 5 acquires/thread, U01)
+
+| Threads | wall ms | granted | timeouts | p50 | p99 |
+|--------:|--------:|--------:|---------:|----:|----:|
+| 1 | 3 | 5 | 0 | 0 | 1 |
+| 4 | 11 | 20 | 0 | 0 | 8 |
+| 8 | 16 | 40 | 0 | 0 | 15 |
+| 16 | 43 | 80 | 0 | 0 | 33 |
+| 32 | 118 | 160 | 0 | 0 | 108 |
+| 64 | 711 | 320 | 0 | 0 | 681 |
+
+**No timeouts** through 64 threads (8s budget). p99 grows ~linearly with queue depth.
+
+### Multi-key vs single-key (32 threads × 20)
+
+| Keys | wall | granted | timeouts |
+|-----:|-----:|--------:|---------:|
+| 1 | 975 ms | 640 | 0 |
+| 4 | **507 ms** | 640 | 0 |
+
+~**1.9×** wall win when lock traffic spreads over 4 keys.
+
+### Reproduce
+
+```bash
+java -cp build:lib/... jvmumps.StoreLockBench 2000 64
+java -cp build:lib/... jvmumps.Cdb2OrderBench tools/cdb2pipe testdb local 2000
+java jvmumps.SqlLockStressSmoke          # adaptive 50×5 or 8×2
+```
 
 ## Findings (living)
 
