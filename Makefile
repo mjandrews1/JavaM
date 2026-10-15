@@ -93,6 +93,8 @@ bench: mjvm all
 	$(JAVA) -cp $(CP) mjvm.bench.FootprintBench 200 50000
 	@echo "=== StoreLock ==="
 	$(JAVA) -cp $(CP) jvmumps.StoreLockBench 2000 32
+	@echo "=== LimitProbes ==="
+	$(JAVA) -cp $(CP) jvmumps.LimitProbeSmoke
 
 install:
 	PREFIX=$(PREFIX) ./install.sh

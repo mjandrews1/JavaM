@@ -17,6 +17,10 @@ import java.util.List;
  *
  * Transport: one long-lived tools/cdb2pipe process (cdb2api).
  * Process-spawn per op would dominate and make the walk comparison unfair.
+ *
+ * <p><b>Thread safety:</b> all public ops synchronize on {@code this} (single pipe
+ * is request/response). {@link #set} group-commits via SETB; {@link #close} is
+ * idempotent and always reaps the pipe process.
  */
 public final class Cdb2Store implements StoreApi {
     static final char SEP = 1;
@@ -24,19 +28,30 @@ public final class Cdb2Store implements StoreApi {
     private final Process proc;
     private final BufferedWriter in;
     private final BufferedReader out;
+    /** Write buffer — guarded by {@code this} (same monitor as cmd/flush). */
     private final java.util.ArrayList<String> pending = new java.util.ArrayList<>();
+    private volatile boolean closed;
     private static final int BATCH = 300; // Comdb2 ~1800 bind limit (300 rows x 6)
 
     public Cdb2Store(String pipePath, String db, String type) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(pipePath, db, type);
         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-        proc = pb.start();
-        in = new BufferedWriter(new OutputStreamWriter(proc.getOutputStream(), StandardCharsets.UTF_8));
-        out = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8));
-        String pong = out.readLine();
-        if (pong == null || !pong.startsWith("PONG")) {
-            throw new MError("cdb2pipe failed to start: " + pong);
+        Process p = null;
+        try {
+            p = pb.start();
+            in = new BufferedWriter(new OutputStreamWriter(p.getOutputStream(), StandardCharsets.UTF_8));
+            out = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
+            String pong = out.readLine();
+            if (pong == null || !pong.startsWith("PONG")) {
+                throw new MError("cdb2pipe failed to start: " + pong);
+            }
+        } catch (Exception e) {
+            if (p != null) {
+                p.destroyForcibly();
+            }
+            throw e;
         }
+        this.proc = p;
     }
 
     private static String hex(String s) {
@@ -85,8 +100,11 @@ public final class Cdb2Store implements StoreApi {
 
     @Override
     public MValue get(List<String> path, boolean global) {
-        flush();
-        String r = cmd("GET\t" + hex(key(path.get(0), path)));
+        String r;
+        synchronized (this) {
+            flushLocked();
+            r = cmd("GET\t" + hex(key(path.get(0), path)));
+        }
         if (r.startsWith("VAL ")) {
             String[] p = r.split(" ");
             String v = unhex(p[1]);
@@ -98,6 +116,10 @@ public final class Cdb2Store implements StoreApi {
 
     /** Group-commit pending SETs (write buffer). Safe to call anytime. */
     public synchronized void flush() {
+        flushLocked();
+    }
+
+    private void flushLocked() {
         if (pending.isEmpty()) return;
         int n = pending.size();
         StringBuilder sb = new StringBuilder("SETB\t").append(n).append('\n');
@@ -112,25 +134,39 @@ public final class Cdb2Store implements StoreApi {
     @Override
     public void set(List<String> path, boolean global, MValue v) {
         String val = v.isnum ? ExprEval.mstr(v.num) : v.str;
-        pending.add(hex(key(path.get(0), path))
+        String row = hex(key(path.get(0), path))
                 + "\t" + hex(sk(path))
                 + "\t" + hex(val)
                 + "\t" + (v.isnum ? 1 : 0)
-                + "\t" + hex(path.get(0)));
-        if (pending.size() >= BATCH) flush();
+                + "\t" + hex(path.get(0));
+        synchronized (this) {
+            if (closed) {
+                throw new MError("cdb2store closed");
+            }
+            pending.add(row);
+            if (pending.size() >= BATCH) {
+                flushLocked();
+            }
+        }
     }
 
     @Override
     public void kill(List<String> path, boolean global) {
-        flush();
-        String r = cmd("KILL\t" + hex(key(path.get(0), path)));
+        String r;
+        synchronized (this) {
+            flushLocked();
+            r = cmd("KILL\t" + hex(key(path.get(0), path)));
+        }
         if (!r.startsWith("OK")) throw new MError("cdb2 kill: " + r);
     }
 
     @Override
     public int data(List<String> path, boolean global) {
-        flush();
-        String r = cmd("DATA\t" + hex(key(path.get(0), path)));
+        String r;
+        synchronized (this) {
+            flushLocked();
+            r = cmd("DATA\t" + hex(key(path.get(0), path)));
+        }
         if (r.startsWith("NUM ")) return Integer.parseInt(r.substring(4));
         return 0;
     }
@@ -138,7 +174,8 @@ public final class Cdb2Store implements StoreApi {
     @Override
     public String order(List<String> path, boolean global, double dir) {
         if (path.size() < 2) return "";
-        flush();
+        synchronized (this) {
+        flushLocked();
         List<String> parent = path.subList(0, path.size() - 1);
         String cur = path.get(path.size() - 1);
         String pfx = key(parent.get(0), parent) + SEP;
@@ -170,6 +207,7 @@ public final class Cdb2Store implements StoreApi {
         String rest = k.substring(pfx.length());
         int j = rest.indexOf(SEP);
         return j < 0 ? rest : rest.substring(0, j);
+        }
     }
 
     @Override
@@ -187,17 +225,29 @@ public final class Cdb2Store implements StoreApi {
         if (v != MValue.EMPTY) set(dst, dGlobal, v);
     }
 
+    /** Idempotent close — always reaps the cdb2pipe process. */
     public void close() {
-        try {
-            flush();
-            cmd("QUIT");
-        } catch (Exception ignored) {
+        synchronized (this) {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            try {
+                flushLocked();
+                cmd("QUIT");
+            } catch (Exception ignored) {
+            }
+            try {
+                in.close();
+                out.close();
+            } catch (Exception ignored) {
+            }
         }
+        proc.destroyForcibly();
         try {
-            in.close();
-            out.close();
-        } catch (Exception ignored) {
+            proc.waitFor(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
-        proc.destroy();
     }
 }
