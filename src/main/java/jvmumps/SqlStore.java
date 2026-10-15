@@ -21,6 +21,12 @@ import java.util.List;
  * global buffers) — not replaced by SQLite. Cross-process locks use
  * {@code mlocks}; see also {@link MStore} for the ephemeral backend.
  * Lock/file-record semantics: {@code docs/SQLSTORE-LOCKS.md}.
+ *
+ * <p><b>Thread safety:</b> JDBC {@link Connection} is not thread-safe; all
+ * store ops and {@code mlocks} updates synchronize on {@code conn}.
+ * {@link LockQueue} is in-process FIFO under its own monitor (never nested
+ * under {@code conn} in the wrong order — queue lock is always acquired
+ * <i>after</i> a successful mlocks insert, released before dropping conn).
  */
 public final class SqlStore implements StoreApi {
     static final char SEP = 1;
@@ -74,6 +80,7 @@ public final class SqlStore implements StoreApi {
 
     @Override
     public MValue get(List<String> path, boolean global) {
+        synchronized (conn) {
         try (PreparedStatement ps =
                      conn.prepareStatement("SELECT val, isnum FROM nodes WHERE k=?")) {
             ps.setString(1, key(path.get(0), path));
@@ -88,10 +95,12 @@ public final class SqlStore implements StoreApi {
             return MValue.EMPTY;
         }
         return MValue.EMPTY;
+        }
     }
 
     @Override
     public void set(List<String> path, boolean global, MValue v) {
+        synchronized (conn) {
         String key = key(path.get(0), path);
         StringBuilder sk = new StringBuilder();
         for (int i = 1; i < path.size(); i++) {
@@ -111,10 +120,12 @@ public final class SqlStore implements StoreApi {
         } catch (Exception e) {
             throw new MError("sqlite set failed: " + e);
         }
+        }
     }
 
     @Override
     public void kill(List<String> path, boolean global) {
+        synchronized (conn) {
         String k = key(path.get(0), path);
         try (PreparedStatement ps =
                      conn.prepareStatement("DELETE FROM nodes WHERE k=? OR k LIKE ? ESCAPE '\\'")) {
@@ -143,10 +154,12 @@ public final class SqlStore implements StoreApi {
                 throw new MError("sqlite kill failed: " + e2);
             }
         }
+        }
     }
 
     @Override
     public int data(List<String> path, boolean global) {
+        synchronized (conn) {
         String k = key(path.get(0), path);
         boolean hasVal = false;
         boolean hasDesc = false;
@@ -176,10 +189,12 @@ public final class SqlStore implements StoreApi {
             return 1;
         }
         return hasDesc ? 10 : 0;
+        }
     }
 
     @Override
     public String order(List<String> path, boolean global, double dir) {
+        synchronized (conn) {
         if (path.size() < 2) {
             return "";
         }
@@ -218,6 +233,7 @@ public final class SqlStore implements StoreApi {
             return "";
         }
         return "";
+        }
     }
 
     @Override
@@ -369,10 +385,17 @@ public final class SqlStore implements StoreApi {
         }
     }
 
+    /** Idempotent close — drop queues and JDBC connection (leak fix). */
     public void close() {
-        try {
-            conn.close();
-        } catch (Exception ignored) {
+        lockQueues.clear();
+        lastWaitMs.clear();
+        synchronized (conn) {
+            try {
+                if (!conn.isClosed()) {
+                    conn.close();
+                }
+            } catch (Exception ignored) {
+            }
         }
     }
 }
