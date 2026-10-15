@@ -1,128 +1,72 @@
-# jvmumps critical path
+# JavaM critical path
 
-**Last updated:** 2026-10-09  
-**Charter:** JvMumps and mJVM are **complete M implementations** with **RSM-equivalent scope** (RSM as *model*, not a line-by-line port).  
-**Parts:** JvMumps (1) → mJVM (2).  
-**Siblings:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps/C3Mumps — same charter), `fst/docs/CRITICAL_PATH.md` (F/R overview).
+**Last updated:** 2026-10-15 · **Product:** JavaM (JvMumps + mJVM) · repo `mjandrews1/JavaM`  
+**Charter:** complete M with **RSM-equivalent scope** (RSM is the *model/oracle*, not a line-by-line port).  
+**Sibling:** `m-semantics/docs/MASTER_CRITICAL_PATH.md` (all projects) · `docs/ROADMAP-0.5.0.md` (current cycle).
 
-## Dependency graph
+## Status snapshot (2026-10-15)
+
+| Track | State |
+|-------|--------|
+| Language / corpus | **DONE** — `MjvmNativeScore` **131 / 8 / 0** |
+| mJVM native path | **DONE** at 131/8/0 |
+| **v0.4.0** ship | **DONE** — Cdb2Store mesh plane · multi-level `$ORDER` · fleet smoke |
+| **v0.5.0** perf review | **IN FLIGHT** — #97–#102 landed; #122/#123/#126 open |
+| Store backends | SqlStore + MStore + **Cdb2Store** (grouped SETB, locks in PR #127) |
+| FileMan Tier A | **OPEN** — gate for **1.0** (issue #32) |
+
+## Priority order (attack next)
 
 ```
-  RSM ad679d0 (oracle / model)
-        │
-        ├──────────────────────────────┐
-        ▼                              ▼
-  ┌─────────────┐               ┌─────────────┐
-  │ PyMumps     │               │ C3Mumps     │   (parallel, full M)
-  │ full M      │               │ full M      │
-  └─────────────┘               └─────────────┘
-        │
-        │  shared corpus (not source)
-        ▼
-  ┌─────────────┐
-  │ J0–J11      │  JvMumps — full M in Java
-  │ JvMumps     │
-  └──────┬──────┘
-         │  frontend + contract
-         ▼
-  ┌─────────────┐
-  │ M0–M9       │  mJVM — JVM-native full M
-  │ mJVM        │
-  └─────────────┘
+  1  PR #127 / #126   Cdb2Store cross-process LOCK + TSTART undo  ← merge + close
+  2  #122 / #123      store concurrency audit remainder           ← v0.5.0
+  3  #32              FileMan Tier A                              ← 1.0 gate
+  4  #25 / #26        Dafny DO/GOTO + 8 corpus misses             ← prove
+  5  #35 / #36        REPL (JavaM + mJVM)                         ← UX
+  6  #27              rename leftovers (docs/CI badges)           ← hygiene
+  7  #34              full VistA under JavaM + mJVM               ← recurring
+  8  #28              MeshGraph DS libs → stdlib                  ← optional
 ```
 
-JvMumps may run **in parallel** with PyMumps/C3Mumps waves.  
-mJVM **M1+** waits on JvMumps J1–J2 (values + commands) so the frontend is not written twice.
+## v0.4.0 (shipped 2026-10-15)
 
----
+| Item | Notes |
+|------|--------|
+| `Cdb2Store` + `tools/cdb2pipe` | StoreApi on Comdb2 · SETB group-commit |
+| `Stores` + `mjvm --store` | memory / sqlite / cdb2 |
+| Multi-level `$ORDER` | subtree skip (mesh `related()` hang fix) |
+| Fleet smoke | Mac · U01 · U02 · LXC **99/99** · lock stress adaptive |
+| Tag | `v0.4.0` @ `df89769` |
 
-## Part 1 — JvMumps (full M in Java)
+## v0.5.0 (perf cycle) — done vs open
 
-| ID | Task | Gate |
-|----|------|------|
-| **J0** | Scaffold (build, JUnit, shared corpus, runner) | runner green |
-| **J1** | Values + left-to-right expr | C01–C25 |
-| **J2** | Core commands SET/IF/FOR/WRITE/KILL/NEW/MERGE/QUIT | corpus |
-| **J3** | Patterns + ISO divergences | T11–T15 |
-| **J4** | Intrinsics `FUN*` + `$HOROLOG`/`$SELECT`/`$X`/`$Y` | B1–B6 |
-| **J5** | `@`/`@@`/`K @ref` + `$QUERY`/`$STACK`/`$TEXT` | C51–C76 |
-| **J6** | Routine calls + `LOCK` | W4-equivalent |
-| **J7** | Store + **persistence** | W5-equivalent |
-| **J8** | Devices `READ`/`OPEN`/`USE`/`CLOSE` | W6-equivalent |
-| **J9** | `JOB`, transactions, `$ETRAP`/`$ECODE`, `VIEW` | W7-equivalent |
-| **J10** | Full specials + WRITE device params | W8-equivalent |
-| **J11** | **Full-M acceptance** vs RSM | corpus + FileMan + CLI |
+| Issue | State |
+|-------|--------|
+| #97 PerfMatrix + harness | **DONE** |
+| #98 metrics matrix + U01 baseline | **DONE** (`docs/BENCH.md`, `BENCH-baseline.md`) |
+| #99 cross-stack + class unroll + RSM row | **DONE** (persistent RSM runner) |
+| #100 store + lock latency | **DONE** (`StoreLockBench`) |
+| #101 footprint | **DONE** (`FootprintBench`) |
+| #102 findings writeup | **DONE** (`docs/PERF-REVIEW.md`) |
+| #31 SQLite vs Comdb2 report | **DONE** (`docs/BENCH-BACKENDS.md`) |
+| #33 bench harness + limit probes | **DONE** (`make bench`, `LimitProbeSmoke`) |
+| **#122 concurrency** | **OPEN** — TSTART/JOB, phantoms, fairness |
+| **#123 store impact matrix** | **OPEN** — finish table after #126 |
+| **#126 Cdb2 LOCK + TSTART** | **IN FLIGHT** — PR #127 |
 
-**J11 exit:** JvMumps meets the RSM observable contract (language + subsystems), same eight ISO divergences as peer ports.
+## Historical ladder (J0–J17 / M0–M12) — complete
 
----
+All gates green at **131/8/0** (LineEngine, mJVM IR, mJVM native). Catch-up `docs/CATCHUP-2026-10.md`. Detail remains in git history of this file.
 
-## Part 2 — mJVM (JVM-native full M)
+## Non-goals / locks
 
-| ID | Task | Gate |
-|----|------|------|
-| **M0** | `compiler/` `runtime/` `cli/` modules | builds |
-| **M1** | Frontend → M IR (shared contract with JvMumps) | J1–J5 corpus |
-| **M2** | Emit `.class` for straight-line code | bytecode smoke |
-| **M3** | `DO`/`$$`/`GOTO` via `invokedynamic` | routine corpus |
-| **M4** | Persistent globals | store oracle vs RSM |
-| **M5** | Devices | FileMan I/O |
-| **M6** | `JOB`, locks, transactions, errors | process + error model |
-| **M7** | CLI `mjvm` drop-in (`rsm`-shaped) | RSM smoke + FileMan Tier A |
-| **M8** | Performance (JIT-friendly) | bench |
-| **M9** | Docs + migration | published |
+- RSM is the **only** oracle — never another port.
+- PyMumps / C3Mumps: **peer-proof freeze** (corpus/regression only).
+- No corpus `expected` edits without ISO/RSM cite (would be MAJOR).
+- fst frozen · O'Kane/FreeM adjunct only.
 
-**M7 exit:** `mjvm` is a drop-in for RSM on the language + subsystem contract.
+## Checklists
 
----
-
-## Catch-up (2026-10-09) — J12–J17 / M10–M12
-
-**Target:** both parts at peer level `MATCH=131 MISS=8 ERR=0` (misses = RSM upstream-bug set).
-**Baseline:** JvMumps ✅ **131/8/0** (target) · mJVM ✅ **131/8/0** (M10–M12). **Plan:** [`docs/CATCHUP-2026-10.md`](docs/CATCHUP-2026-10.md).
-
-| ID | Task | Cases | Ticket |
-|----|------|------:|--------|
-| **J12** | Symbols, literals, quoted strings | ✅ J12SymLitSmoke | jvmumps#7 |
-| **J12b** | Indirection `@` | ✅ | jvmumps#7 |
-| **J13** | DO/GOTO/XECUTE/extrinsic | ✅ | jvmumps#8 |
-| **J14** | Traps + `$Z*` specials | ✅ | jvmumps#9 |
-| **J15** | WRITE device params + `$X`/`$Y` | ✅ | jvmumps#10 |
-| **J16** | FOR/`$STACK`/`$TEXT`/SET `$EXTRACT` | ✅ | jvmumps#11 |
-| **J17** | ISO `=` flip (C24) | ✅ | jvmumps#12 |
-| **M10** | mJVM IF/ELSE/FOR + NEW/KILL/MERGE | ✅ 19/5/115 | jvmumps#13 |
-| **M11** | mJVM calls/intrinsics/indirection | ✅ ERR=0 · 84/55/0 | jvmumps#14 |
-| **M12** | mJVM numerics + parity gate | 3 + gate | jvmumps#15 |
-
-**Exit:** `CorpusScore *` and `MjvmCorpusScore *` both `MATCH=131 MISS=8 ERR=0`, miss **names** = `T12 · T12b · T11 · T11b · T11d · T15 · C16 · C24`, outputs equal Py/C3 on those 8.
-
-**Hard rule:** never weaken test wants to match engine output.
-
----
-
-## Parallel tracks (indicative)
-
-| | PyMumps/C3Mumps | JvMumps | mJVM |
-|---|-----------------|---------|------|
-| Phase A | W4 routines/LOCK | J0–J5 language core | — |
-| Phase B | W5 store | J6–J7 store/LOCK | M0–M1 |
-| Phase C | W6 devices | J8 devices | M2–M4 |
-| Phase D | W7–W9 full M | J9–J11 full M | M5–M7 drop-in |
-| Phase E | — | — | M8–M9 polish |
-
----
-
-## Ticketing
-
-| Work | Repo |
-|------|------|
-| PyMumps / C3Mumps waves | `mjandrews1/pymumps`, `mjandrews1/c3mumps` |
-| JvMumps J0–J11 | `mjandrews1/jvmumps` |
-| mJVM M0–M9 | same |
-| Cross-cutting semantics | `mjandrews1/m-semantics` |
-
-File issues with wave IDs (`W5`, `J7`, `M3`, …). Do not reopen `rsm#20`.
-
-
-**Parts:** JvMumps (1) → mJVM (2).  
-**Siblings:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps/C3Mumps), `fst/docs/CRITICAL_PATH.md` (F/R overview).
+- Ship: `docs/RELEASE-CHECKLIST.md` · `ci-block-probe.sh` ALL PASS  
+- Perf: `make bench` / `tools/capture_baseline.sh` · `docs/BENCH.md`  
+- Locks: `docs/SQLSTORE-LOCKS.md` (incl. assert polarity)

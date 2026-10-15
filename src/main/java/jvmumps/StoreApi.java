@@ -34,12 +34,19 @@ public interface StoreApi {
     /** MERGE: copy src subtree into dst (M MERGE). */
     void merge(List<String> dst, boolean dGlobal, List<String> src, boolean sGlobal);
 
-    /** Cross-process lock acquire. */
+    /**
+     * Cross-process lock acquire.
+     *
+     * <p><b>Polarity:</b> {@code true} = lock is held by {@code pid} (including
+     * idempotent re-acquire). {@code false} = timeout / denied. Tests must use
+     * {@code if (!lockAcquire(...)) throw} to assert success and
+     * {@code if (lockAcquire(...)) throw} to assert the lock stayed blocked.
+     */
     default boolean lockAcquire(String key, String pid, long timeoutMs) {
         return true;
     }
 
-    /** Cross-process lock release. */
+    /** Cross-process lock release (full unlock for {@code pid}). */
     default void lockRelease(String key, String pid) {}
 
 }
