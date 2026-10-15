@@ -34,10 +34,13 @@
 
 | Case | Result |
 |------|--------|
-| Uncontended acquire | ~6 ms |
-| 200×25 single key | 5000/5000 granted · p50 ~215ms · p99 ~233ms · **0 timeouts** |
-| 8 serial waiters | max_wait ~52 ms |
+| Uncontended acquire | ~6–10 ms |
+| 200×25 single key @ 2s | granted=4388 · timeouts=612 (12.2%) · p50 574ms · p99 2006ms · wall 20.5s |
+| 200×25 single key @ 5s | granted=4965 · timeouts=35 (0.7%) · p50 527ms · p99 4506ms · wall 23.0s |
+| 8 serial waiters | max_wait ~56 ms |
 | Multi-key parallel | 4 keys × 40 rounds all granted |
+
+Notes: 5s budget no longer hangs (was a `LockQueue.releaseWrite` hold-leak after `pump()` grant). Timeouts at 2s are budget expiry, not deadlock. `SqlLockStressSmoke [threads] [iters] [timeoutMs]`.
 
 ## Multi-process notes
 

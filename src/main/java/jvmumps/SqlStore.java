@@ -30,6 +30,8 @@ public final class SqlStore implements StoreApi {
     private final ConcurrentHashMap<String, LockQueue> lockQueues = new ConcurrentHashMap<>();
     /** Wait-time measurements (ms) for lockAcquire. */
     private final ConcurrentHashMap<String, Long> lastWaitMs = new ConcurrentHashMap<>();
+    /** Failed mlocks inserts since last sweep (hot-path counter, under conn). */
+    private int mlockMisses;
 
     public SqlStore(String path) throws Exception {
         Class.forName("org.sqlite.JDBC");
@@ -250,55 +252,73 @@ public final class SqlStore implements StoreApi {
     public boolean lockAcquire(String key, String pid, long timeoutMs) {
         long t0 = System.currentTimeMillis();
         long budget = Math.max(0, timeoutMs);
-        LockQueue q = lockQueues.computeIfAbsent(key, k -> LockQueue.oneWriter(64));
-        if (!q.acquireWrite(pid, budget)) {
-            lastWaitMs.put(key, System.currentTimeMillis() - t0);
-            return false;
-        }
         long deadline = t0 + budget;
+        LockQueue q = lockQueues.computeIfAbsent(key, k -> LockQueue.oneWriter(64));
+        // Same pid already owns this key: idempotent (M LOCK via Set in LineTxLocks).
+        if (q.heldByCurrentWriter(pid)) {
+            return true;
+        }
         boolean ok = false;
-        try {
-            while (true) {
+        while (true) {
+            boolean ins = false;
+            synchronized (conn) {
                 try (PreparedStatement ps = conn.prepareStatement(
                         "INSERT OR IGNORE INTO mlocks VALUES (?,?,?)")) {
                     ps.setString(1, key);
                     ps.setString(2, pid);
                     ps.setLong(3, System.currentTimeMillis());
-                    if (ps.executeUpdate() > 0) {
-                        ok = true;
-                        break;
-                    }
+                    ins = ps.executeUpdate() > 0;
                 } catch (Exception e) {
-                    break;
+                    ins = false;
                 }
-                try (PreparedStatement ps = conn.prepareStatement(
-                        "SELECT pid FROM mlocks WHERE lk=?")) {
-                    ps.setString(1, key);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next() && pid.equals(rs.getString(1))) {
-                            ok = true;
-                            break;
+                if (!ins) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT pid FROM mlocks WHERE lk=?")) {
+                        ps.setString(1, key);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next() && pid.equals(rs.getString(1))) {
+                                ins = true;
+                            }
                         }
+                    } catch (Exception ignored) {
                     }
+                }
+                if (!ins) {
+                    // sweep rarely — every miss is too hot under contention
+                    if ((++mlockMisses & 0x3f) == 0) {
+                        lockSweep(30_000);
+                    }
+                }
+            }
+            if (ins) {
+                ok = true;
+                break;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                break;
+            }
+            try {
+                Thread.sleep(2);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        if (ok) {
+            long left = deadline - System.currentTimeMillis();
+            if (!q.acquireWrite(pid, Math.max(1, left))) {
+                // could not take local queue in budget — drop mlocks and fail
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "DELETE FROM mlocks WHERE lk=? AND pid=?")) {
+                    ps.setString(1, key);
+                    ps.setString(2, pid);
+                    ps.executeUpdate();
                 } catch (Exception ignored) {
                 }
-                lockSweep(30_000);
-                if (System.currentTimeMillis() >= deadline) {
-                    break;
-                }
-                try {
-                    Thread.sleep(2);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+                ok = false;
             }
-        } finally {
-            if (!ok) {
-                q.releaseWrite();
-            }
-            lastWaitMs.put(key, System.currentTimeMillis() - t0);
         }
+        lastWaitMs.put(key, System.currentTimeMillis() - t0);
         return ok;
     }
 
@@ -318,7 +338,7 @@ public final class SqlStore implements StoreApi {
         }
         LockQueue q = lockQueues.get(key);
         if (q != null) {
-            q.releaseWrite();
+            q.releaseWriteAll(pid);
         }
     }
 
