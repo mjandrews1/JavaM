@@ -7,34 +7,34 @@ This file is the **single place** that answers: *how fast is this stack, where d
 
 ---
 
-## Metrics matrix
+## Metrics matrix (#98)
 
-| ID | Metric | What it measures | Source |
-|----|--------|------------------|--------|
-| C1 | `m.irexec.compile_line_ms` | Frontend compile of a 1-line program | `PerfMatrix` |
-| C2 | `m.irexec.compile_fragment_ms` | Frontend compile of a small fragment | `PerfMatrix` |
-| I1 | `mjvm.ir.loop_inc_ops` | IR arith loop (JMP back-edge) | `PerfMatrix` / `MjvmBench` |
-| I2 | `mjvm.ir.loop_store_ops` | IR store loop | `PerfMatrix` |
-| I3 | `mjvm.ir.loop_cat_ops` | IR concat (string-alloc bound) | `PerfMatrix` |
-| I4 | unroll inc/cat | IR vs generated class speedup | `MjvmBench` |
-| S1 | `store.mstore.set_ops` / `get_ops` | In-memory `StoreApi` | `PerfMatrix` |
-| S2 | `store.sqlite.set_ops` / `get_ops` / `order_walk_ms` | SQLite `SqlStore` | `PerfMatrix` |
-| S3 | Cdb2 insert / `$ORDER` walk | Comdb2 `Cdb2Store` (grouped) | `Cdb2OrderBench` on U01 |
-| L1 | `lock.uncontended_us` | `SqlStore.lockAcquire` | `PerfMatrix` / `SqlLockMeasureSmoke` |
-| L2 | `SqlLockStressSmoke` | Contended lock matrix | smoke (auto-sized) |
-| F1 | `footprint.heap_*_mb` / `rss_kb` | Heap delta + RSS | `PerfMatrix` |
-| F2 | startup / `mjvm -V` | Process start (manual / `/usr/bin/time`) | #101 |
+One row per metric: **unit · reproduce command · stacks**. Baseline column lives in the **Baselines** section (U01 = host of record).
 
-**Re-run (any host):**
+| # | Metric | Unit | Reproduce command | Stacks | Target / gate |
+|--:|--------|------|-------------------|--------|---------------|
+| 1 | Corpus wall time | s | `java jvmumps.CorpusRunner tests/conformance.json` | JavaM, mJVM | baseline only |
+| 2 | Corpus score | MATCH/ERR/MISS | `java jvmumps.MjvmCorpusScore` / `MjvmNativeScore` | JavaM, mJVM | **131 / 0 / 8** |
+| 3 | IR arith loop | it/s | `java mjvm.bench.MjvmBench 50000` | mJVM | ≥ 1e6 |
+| 4 | IR cat loop | it/s | `java mjvm.bench.MjvmBench 50000` | mJVM | ≥ 1e5 |
+| 5 | Class vs IR speedup | × | `java mjvm.bench.MjvmBench 50000` (unroll pair) | mJVM | class runs |
+| 6 | Compile latency | ms | `java mjvm.bench.MjvmBench 50000` | mJVM | ≤ 50 |
+| 7 | SET/GET bulk | ops/s | `java mjvm.bench.PerfMatrix 50000` | JavaM, mJVM | baseline |
+| 8 | `$ORDER` walk | ms / keys | `java mjvm.bench.PerfMatrix 50000` | JavaM, mJVM | baseline |
+| 9 | TSTART/TCOMMIT | ms | lock/tx smokes (extend with timers) | JavaM | pending #100 |
+| 10 | Lock acquire uncontended | µs | `java jvmumps.SqlLockMeasureSmoke` | JavaM | ~6–10 ms historical; µs on warm |
+| 11 | Lock stress P50/P99 | ms | `java jvmumps.SqlLockStressSmoke` | JavaM | 0 timeouts |
+| 12 | Startup to first output | s | `java mjvm.cli.Mjvm -V` | both | baseline |
+| 13 | Peak RSS (make smoke) | s / KB | `make smoke` + `/usr/bin/time` | both | baseline |
+| 14 | RSM oracle compare | ratio | RSM corpus runner (same `tests/conformance.json`) | RSM | pending #99 |
+
+**Capture (fixed host):**
 
 ```bash
-./tools/perf_review.sh 100000 /tmp/perf-mac.md
-java -cp build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar mjvm.bench.PerfMatrix --json 100000
+./tools/capture_baseline.sh u01 docs/BENCH-baseline.md
+# or raw matrix
+java -cp build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar mjvm.bench.PerfMatrix --json 50000
 ```
-
-Fixed hosts for the **baseline of record:** U01 then U02 (not CI).
-
----
 
 ## Baselines
 
@@ -58,7 +58,9 @@ Captured with `mjvm.bench.PerfMatrix 50000` on the v0.4.0 tree.
 
 `MjvmBench` M8 targets on this host remain PASS (see `docs/mjvm-perf.md`).
 
-### U01 (x86_64 · 6 cpus · Ubuntu OpenJDK 25) — 2026-10-15
+### U01 (x86_64 · 6 cpus · Ubuntu OpenJDK 25) — 2026-10-15 · **host of record**
+
+Full matrix dump: [`docs/BENCH-baseline.md`](BENCH-baseline.md) (`tools/capture_baseline.sh`). Rows 5 (class unroll) and 14 (RSM) pending #99/#101.
 
 `./tools/perf_review.sh 50000` · host `Linux 7.0.0-31-generic` · **baseline of record**
 
