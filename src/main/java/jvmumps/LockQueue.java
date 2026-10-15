@@ -46,7 +46,8 @@ public final class LockQueue {
     private final int maxWriters;
     private final Object mu = new Object();
     /** Re-entrant writer holds (M LOCK +X twice). */
-    private final java.util.Map<Thread, Integer> writeHolds = new java.util.HashMap<>();
+    private final java.util.Map<String, Integer> writeHolds = new java.util.HashMap<>();
+    private final java.util.Map<Thread, String> lastWriter = new java.util.HashMap<>();
     private final Deque<Waiter> queue = new ArrayDeque<>();
     private int activeReaders;
     private int activeWriters;
@@ -74,6 +75,26 @@ public final class LockQueue {
     public int activeReaders() {
         synchronized (mu) {
             return activeReaders;
+        }
+    }
+
+    private String lastWriterPid(Thread th) {
+        return lastWriter.get(th);
+    }
+
+    /** True if this pid already holds the write side (M LOCK re-entrancy). */
+    public boolean heldByCurrentWriter(String pid) {
+        synchronized (mu) {
+            Integer h = writeHolds.get(pid);
+            return h != null && h > 0;
+        }
+    }
+
+    /** Backward-compatible probe: any write hold on this thread. */
+    public boolean heldByCurrentWriter() {
+        synchronized (mu) {
+            String pid = lastWriter.get(Thread.currentThread());
+            return pid != null && writeHolds.containsKey(pid);
         }
     }
 
@@ -108,15 +129,63 @@ public final class LockQueue {
         }
     }
 
-    public void releaseWrite() {
+    /** Drop every write hold for {@code pid} (StoreApi full unlock). */
+    public void releaseWriteAll(String pid) {
         synchronized (mu) {
-            Thread me = Thread.currentThread();
-            Integer h = writeHolds.get(me);
-            if (h != null && h > 1) {
-                writeHolds.put(me, h - 1);
+            Integer h = pid == null ? null : writeHolds.remove(pid);
+            lastWriter.entrySet().removeIf(e -> pid != null && pid.equals(e.getValue()));
+            if (h == null || h <= 0) {
                 return;
             }
-            writeHolds.remove(me);
+            if (activeWriters > 0) {
+                activeWriters--;
+            }
+            pump();
+        }
+    }
+
+    /** Release one write hold for {@code pid} (M LOCK -X). */
+    public void releaseWrite(String pid) {
+        synchronized (mu) {
+            Integer h = pid == null ? null : writeHolds.get(pid);
+            if (h == null || h <= 0) {
+                return;
+            }
+            if (h > 1) {
+                writeHolds.put(pid, h - 1);
+                return;
+            }
+            writeHolds.remove(pid);
+            if (lastWriter.get(Thread.currentThread()) != null
+                    && lastWriter.get(Thread.currentThread()).equals(pid)) {
+                lastWriter.remove(Thread.currentThread());
+            }
+            if (activeWriters > 0) {
+                activeWriters--;
+            }
+            pump();
+        }
+    }
+
+    /** Release the write hold recorded on this thread (no-op if none). */
+    public void releaseWrite() {
+        synchronized (mu) {
+            String pid = lastWriterPid(Thread.currentThread());
+            if (pid == null) {
+                return;
+            }
+            // drop thread map first so nested releaseWrite() is safe
+            lastWriter.remove(Thread.currentThread());
+            Integer h = writeHolds.get(pid);
+            if (h == null || h <= 0) {
+                return;
+            }
+            if (h > 1) {
+                writeHolds.put(pid, h - 1);
+                lastWriter.put(Thread.currentThread(), pid);
+                return;
+            }
+            writeHolds.remove(pid);
             if (activeWriters > 0) {
                 activeWriters--;
             }
@@ -130,16 +199,18 @@ public final class LockQueue {
         synchronized (mu) {
             // fast path: empty queue and capacity
             if (writer) {
-                Integer h = writeHolds.get(Thread.currentThread());
+                Integer h = writeHolds.get(pid);
                 if (h != null && h > 0) {
-                    writeHolds.put(Thread.currentThread(), h + 1);
+                    writeHolds.put(pid, h + 1);
+                    lastWriter.put(Thread.currentThread(), pid);
                     return true;
                 }
             }
             if (queue.isEmpty() && canGrant(writer)) {
                 take(writer);
                 if (writer) {
-                    writeHolds.put(Thread.currentThread(), 1);
+                    writeHolds.put(pid, 1);
+                    lastWriter.put(Thread.currentThread(), pid);
                 }
                 return true;
             }
@@ -191,7 +262,8 @@ public final class LockQueue {
             queue.removeFirst();
             take(h.writer);
             if (h.writer) {
-                writeHolds.put(h.thread, 1);
+                writeHolds.put(h.pid, 1);
+                lastWriter.put(h.thread, h.pid);
             }
             h.granted = true;
             mu.notifyAll();

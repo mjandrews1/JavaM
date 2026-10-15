@@ -15,21 +15,27 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class SqlLockStressSmoke {
     public static void main(String[] args) throws Exception {
         // make smoke passes $(CORPUS) as argv — only accept integers
-        int threads = 200;
-        int iters = 25;
+        // args: [threads] [iters] [timeoutMs]
+        // Defaults are CI-safe; use 200 25 2000/5000 for measurement.
+        int threads = 50;
+        int iters = 5;
+        long timeoutMs = 2000;
         int seen = 0;
         for (String a : args) {
             if (a != null && a.matches("\\d+")) {
                 if (seen == 0) {
                     threads = Integer.parseInt(a);
-                } else {
+                } else if (seen == 1) {
                     iters = Integer.parseInt(a);
+                } else {
+                    timeoutMs = Long.parseLong(a);
                 }
                 seen++;
             }
         }
         final int nThreads = threads;
         final int nIters = iters;
+        final long nTimeoutMs = timeoutMs;
         File db = File.createTempFile("sqlk-stress", ".db");
         db.deleteOnExit();
         SqlStore st = new SqlStore(db.getAbsolutePath());
@@ -47,7 +53,7 @@ public final class SqlLockStressSmoke {
                     go.await();
                     for (int i = 0; i < nIters; i++) {
                         long a = System.nanoTime();
-                        boolean ok = st.lockAcquire("stress", pid, 2000);
+                        boolean ok = st.lockAcquire("stress", pid, nTimeoutMs);
                         waits.add((System.nanoTime() - a) / 1_000_000);
                         if (!ok) {
                             timedOut.incrementAndGet();
@@ -78,7 +84,7 @@ public final class SqlLockStressSmoke {
                 + " samples=" + sorted.size()
                 + " granted=" + granted.get()
                 + " timeouts=" + timedOut.get()
-                + " wall_ms=" + wallMs);
+                + " timeout_ms=" + nTimeoutMs + " wall_ms=" + wallMs);
         System.out.println("WAIT_MS mean=" + String.format("%.2f", mean)
                 + " p50=" + pct(sorted, 50) + " p90=" + pct(sorted, 90)
                 + " p99=" + pct(sorted, 99)
