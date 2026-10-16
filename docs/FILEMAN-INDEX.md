@@ -59,6 +59,19 @@ CREATE TABLE call (
 CREATE INDEX ix_call_target ON call(target);
 CREATE INDEX ix_call_ext    ON call(ext);
 
+-- caller-side args of each DO / $$ (pass-by-ref = FileMan .var idiom)
+CREATE TABLE call_arg (
+  id         INTEGER PRIMARY KEY,
+  call       INTEGER NOT NULL REFERENCES call(id) ON DELETE CASCADE,
+  pos        INTEGER NOT NULL,      -- 1-based
+  src        TEXT NOT NULL,         -- raw arg text as written
+  byref      INTEGER NOT NULL DEFAULT 0,
+  byref_name TEXT                  -- actual var name when byref (.DIC → DIC)
+);
+CREATE INDEX ix_call_arg_call  ON call_arg(call);
+CREATE INDEX ix_call_arg_byref ON call_arg(byref);
+CREATE INDEX ix_call_arg_name  ON call_arg(byref_name);
+
 -- $intrinsic usage (FileMan-shaped analysis)
 CREATE TABLE intrinsic (
   id        INTEGER PRIMARY KEY,
@@ -105,6 +118,19 @@ SELECT name, formals FROM label
 SELECT r.package, g.kind, COUNT(*) n
   FROM gap g JOIN routine r ON r.id=g.routine
  GROUP BY 1,2 ORDER BY n DESC;
+
+-- byref .var usage: rate, top actuals, hottest call sites
+SELECT COUNT(*) args,
+       SUM(byref) byref,
+       ROUND(100.0*SUM(byref)/COUNT(*),1) pct
+  FROM call_arg;
+
+SELECT byref_name, COUNT(*) n FROM call_arg
+ WHERE byref=1 GROUP BY 1 ORDER BY n DESC LIMIT 20;
+
+SELECT c.target, COUNT(*) n, SUM(a.byref) nb
+  FROM call c JOIN call_arg a ON a.call=c.id
+ WHERE a.byref=1 GROUP BY 1 ORDER BY nb DESC LIMIT 20;
 
 -- Full-text: "lookup" near DIC
 SELECT name FROM routine_fts WHERE routine_fts MATCH 'lookup AND DIC' LIMIT 20;

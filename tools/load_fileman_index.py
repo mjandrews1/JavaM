@@ -40,6 +40,88 @@ RE_INTRINSIC = re.compile(r"\$([A-Za-z%][A-Za-z0-9%]*)")
 # Known-gap markers
 RE_ZSTAR = re.compile(r"\$Z[A-Z0-9%]*")
 RE_XCALL = re.compile(r"\$&[A-Za-z]|X\^|XECUTE\s+@?")
+# Pass-by-reference actual: .NAME (not a decimal like .01)
+RE_BYREF = re.compile(r"^\.([A-Za-z%][A-Za-z0-9%]*)$")
+
+
+def read_arglist(line: str, i: int):
+    """If line[i] is '(' return (arg_text_inside, end_index_after_rparen).
+    Quote- and depth-aware. Else (None, i)."""
+    if i >= len(line) or line[i] != "(":
+        return None, i
+    depth = 0
+    in_str = False
+    j = i
+    while j < len(line):
+        c = line[j]
+        if in_str:
+            if c == '"':
+                if j + 1 < len(line) and line[j + 1] == '"':
+                    j += 2
+                    continue
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return line[i + 1 : j], j + 1
+        j += 1
+    return None, i
+
+
+def split_args(argtext: str):
+    """Split an M arg list on top-level commas (quote- and depth-aware)."""
+    if not argtext.strip():
+        return []
+    out, buf, depth, in_str = [], [], 0, False
+    j = 0
+    while j < len(argtext):
+        c = argtext[j]
+        if in_str:
+            buf.append(c)
+            if c == '"':
+                if j + 1 < len(argtext) and argtext[j + 1] == '"':
+                    buf.append(argtext[j + 1])
+                    j += 2
+                    continue
+                in_str = False
+        elif c == '"':
+            in_str = True
+            buf.append(c)
+        elif c == "(":
+            depth += 1
+            buf.append(c)
+        elif c == ")":
+            depth -= 1
+            buf.append(c)
+        elif c == "," and depth == 0:
+            out.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(c)
+        j += 1
+    tail = "".join(buf).strip()
+    if tail:
+        out.append(tail)
+    return out
+
+
+def byref_name(arg: str):
+    """Return the actual variable name if arg is a pass-by-ref `.NAME`, else None."""
+    m = RE_BYREF.match(arg.strip())
+    return m.group(1) if m else None
+
+
+def args_after(line: str, i: int):
+    """Split the `(…)` arg list that may follow a call at line[i:]."""
+    j = i
+    while j < len(line) and line[j] in " \t":
+        j += 1
+    argtext, _ = read_arglist(line, j)
+    return split_args(argtext) if argtext is not None else []
 
 
 def package_of(rel: str) -> str:
@@ -48,7 +130,11 @@ def package_of(rel: str) -> str:
 
 
 def parse_routine(text: str):
-    """Return (labels, calls, intrinsics, gaps). Each label is (name, line, formals)."""
+    """Return (labels, calls, intrinsics, gaps).
+
+    Each call is (line, kind, target, tag, ext, args) where args is the list
+    of raw arg strings from the call site (empty if no paren list).
+    """
     labels, calls, intrinsics, gaps = [], [], [], []
     for n, raw in enumerate(text.splitlines(), 1):
         if not raw:
@@ -60,19 +146,21 @@ def parse_routine(text: str):
             labels.append((m.group(1), n, formals))
         body = raw
         for mm in RE_EXTRINSIC.finditer(body):
-            calls.append((n, "EXTRINSIC", mm.group(0), mm.group(1), mm.group(3)))
+            args = args_after(body, mm.end())
+            calls.append((n, "EXTRINSIC", mm.group(0), mm.group(1), mm.group(3), args))
         for mm in RE_DO.finditer(body):
             if mm.group(1):  # $$ handled above
                 continue
             tag, ext = mm.group(2), mm.group(4)
             if tag or ext:
                 tgt = (tag or "") + ("^" + ext if ext else "")
-                calls.append((n, "DO", tgt, tag, ext))
+                args = args_after(body, mm.end())
+                calls.append((n, "DO", tgt, tag, ext, args))
         for mm in RE_GOTO.finditer(body):
             tag, ext = mm.group(1), mm.group(3)
             if tag or ext:
                 tgt = (tag or "") + ("^" + ext if ext else "")
-                calls.append((n, "GOTO", tgt, tag, ext))
+                calls.append((n, "GOTO", tgt, tag, ext, []))
         for mm in RE_INTRINSIC.finditer(body):
             name = mm.group(1).upper()
             if name.startswith("Z") or name in {"H", "I", "J", "K", "L", "N", "P", "Q", "R", "S", "T", "X"}:
@@ -93,6 +181,7 @@ def schema(db: sqlite3.Connection) -> None:
         DROP TABLE IF EXISTS routine_fts;
         DROP TABLE IF EXISTS routine;
         DROP TABLE IF EXISTS label;
+        DROP TABLE IF EXISTS call_arg;
         DROP TABLE IF EXISTS call;
         DROP TABLE IF EXISTS intrinsic;
         DROP TABLE IF EXISTS gap;
@@ -121,6 +210,18 @@ def schema(db: sqlite3.Connection) -> None:
         CREATE INDEX ix_call_target ON call(target);
         CREATE INDEX ix_call_ext    ON call(ext);
 
+        -- caller-side args of each DO/$$ (pass-by-ref = FileMan .var idiom)
+        CREATE TABLE call_arg (
+          id INTEGER PRIMARY KEY, call INTEGER NOT NULL REFERENCES call(id) ON DELETE CASCADE,
+          pos INTEGER NOT NULL,          -- 1-based
+          src TEXT NOT NULL,             -- raw arg text as written
+          byref INTEGER NOT NULL DEFAULT 0,
+          byref_name TEXT                -- actual var name when byref
+        );
+        CREATE INDEX ix_call_arg_call ON call_arg(call);
+        CREATE INDEX ix_call_arg_byref ON call_arg(byref);
+        CREATE INDEX ix_call_arg_name  ON call_arg(byref_name);
+
         CREATE TABLE intrinsic (
           id INTEGER PRIMARY KEY, routine INTEGER NOT NULL REFERENCES routine(id) ON DELETE CASCADE,
           line INTEGER NOT NULL, name TEXT NOT NULL
@@ -139,7 +240,10 @@ def schema(db: sqlite3.Connection) -> None:
 
 
 def load(db: sqlite3.Connection, root: Path, limit: int) -> dict:
-    counts = {"routines": 0, "labels": 0, "calls": 0, "intrinsics": 0, "gaps": 0}
+    counts = {
+        "routines": 0, "labels": 0, "calls": 0, "call_args": 0,
+        "byref_args": 0, "intrinsics": 0, "gaps": 0,
+    }
     files = sorted(root.rglob("*.m"))
     if limit:
         files = files[:limit]
@@ -166,11 +270,21 @@ def load(db: sqlite3.Connection, root: Path, limit: int) -> dict:
                 "INSERT INTO label(routine,name,line,formals,extrinsic) VALUES(?,?,?,?,?)",
                 (rid, lab, line, formals, 1 if formals else 0),
             )
-        for line, kind, target, tag, ext in calls:
-            db.execute(
+        for line, kind, target, tag, ext, args in calls:
+            cur = db.execute(
                 "INSERT INTO call(routine,line,kind,target,tag,ext) VALUES(?,?,?,?,?,?)",
                 (rid, line, kind, target, tag, ext),
             )
+            cid = cur.lastrowid
+            for pos, src in enumerate(args, 1):
+                bn = byref_name(src)
+                db.execute(
+                    "INSERT INTO call_arg(call,pos,src,byref,byref_name) VALUES(?,?,?,?,?)",
+                    (cid, pos, src, 1 if bn else 0, bn),
+                )
+                counts["call_args"] += 1
+                if bn:
+                    counts["byref_args"] += 1
         for line, iname in intrinsics:
             db.execute("INSERT INTO intrinsic(routine,line,name) VALUES(?,?,?)", (rid, line, iname))
         for line, kind, detail in gaps:
@@ -201,6 +315,30 @@ def stats(db: sqlite3.Connection) -> None:
     print("\n### gaps by kind")
     for kind, n in db.execute("SELECT kind, COUNT(*) FROM gap GROUP BY 1 ORDER BY 2 DESC"):
         print(f"  {kind:<8} {n}")
+    print("\n### byref .var args (caller-side)")
+    tot_args = db.execute("SELECT COUNT(*) FROM call_arg").fetchone()[0]
+    tot_by = db.execute("SELECT COUNT(*) FROM call_arg WHERE byref=1").fetchone()[0]
+    print(f"  args={tot_args}  byref={tot_by}  "
+          f"({(100.0*tot_by/tot_args):.1f}% of args)" if tot_args else "  args=0")
+    print("  -- top actuals passed byref")
+    for nm, n in db.execute(
+        "SELECT byref_name, COUNT(*) FROM call_arg WHERE byref=1"
+        " GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
+    ):
+        print(f"  {n:>5}  .{nm}")
+    print("  -- targets most often called with byref")
+    for tgt, n, nb in db.execute(
+        "SELECT c.target, COUNT(*) n, SUM(a.byref) nb"
+        " FROM call c JOIN call_arg a ON a.call=c.id"
+        " WHERE a.byref=1 GROUP BY 1 ORDER BY nb DESC, n DESC LIMIT 12"
+    ):
+        print(f"  {nb:>5}/{n:<5}  {tgt}")
+    print("  -- calls with any byref arg, by kind")
+    for kind, n in db.execute(
+        "SELECT c.kind, COUNT(DISTINCT c.id) FROM call c"
+        " JOIN call_arg a ON a.call=c.id WHERE a.byref=1 GROUP BY 1 ORDER BY 2 DESC"
+    ):
+        print(f"  {n:>5}  {kind}")
     print("\n### extrinsics (formals) sample")
     for r, lab, f in db.execute(
         "SELECT r.name, l.name, l.formals FROM label l JOIN routine r ON r.id=l.routine"
@@ -229,7 +367,7 @@ def main() -> int:
         schema(db)
         counts = load(db, root, args.limit)
         print(f"indexed {counts['routines']} routines -> {db_path}")
-        for k in ("labels", "calls", "intrinsics", "gaps"):
+        for k in ("labels", "calls", "call_args", "byref_args", "intrinsics", "gaps"):
             print(f"  {k}: {counts[k]}")
         if args.stats:
             stats(db)
