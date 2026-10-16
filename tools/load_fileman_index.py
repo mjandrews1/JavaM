@@ -129,11 +129,42 @@ def package_of(rel: str) -> str:
     return top if "/" in rel else "root"
 
 
+def strip_comment(line: str) -> str:
+    """Drop an M `;` comment, honoring double-quoted strings.
+
+    A call on a comment-only line is not a call: `;D DF(.ZOSH1) CHANGE TO
+    USE $TR` is dead text. Without this, ~3.8% of indexed calls are
+    phantom (commented-out code) and pollute the byref analysis.
+    """
+    out, in_str, i = [], False, 0
+    while i < len(line):
+        c = line[i]
+        if in_str:
+            out.append(c)
+            if c == '"':
+                if i + 1 < len(line) and line[i + 1] == '"':
+                    out.append(line[i + 1])
+                    i += 2
+                    continue
+                in_str = False
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif c == ";":
+            break
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def parse_routine(text: str):
     """Return (labels, calls, intrinsics, gaps).
 
     Each call is (line, kind, target, tag, ext, args) where args is the list
     of raw arg strings from the call site (empty if no paren list).
+    Labels come from the raw line (col-0 tag); everything else from the
+    comment-stripped code.
     """
     labels, calls, intrinsics, gaps = [], [], [], []
     for n, raw in enumerate(text.splitlines(), 1):
@@ -144,7 +175,9 @@ def parse_routine(text: str):
         if m and m.group(1).upper() not in CMD_WORDS:
             formals = m.group(3).strip() if m.group(3) else None
             labels.append((m.group(1), n, formals))
-        body = raw
+        body = strip_comment(raw)
+        if not body.strip():
+            continue
         for mm in RE_EXTRINSIC.finditer(body):
             args = args_after(body, mm.end())
             calls.append((n, "EXTRINSIC", mm.group(0), mm.group(1), mm.group(3), args))
