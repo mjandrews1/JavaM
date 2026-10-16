@@ -614,18 +614,6 @@ def writes_name(body, name, root, db, cache, self_path=None, depth=0, seen=None)
 def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=None):
     """Decide read-before-write for one call. Resolves the `maybe` bucket by
     tracing DO targets (depth-capped) to see whether they write the formal."""
-    if formal.upper() in SHARED_STATE:
-        # Split by whether the callee also mutates the shared state:
-        # read-only consumer vs in/out mutator.
-        mutates = ever_written(body, formal)
-        kind = "shared-state-rw" if mutates else "shared-state-ro"
-        note = "mutates" if mutates else "read-only"
-        row["rbw"] = {"line": 0,
-                      "snippet": "(shared-state " + note + " in "
-                                 + SHARED_STATE[formal.upper()] + ")",
-                      "status": kind}
-        rbw_rows.append((row, (0, 0, "(shared-state " + note + ")", False)))
-        return
     rbw = read_before_write(body, formal)
     if not rbw:
         # read_before_write returns None when the formal is written first or
@@ -633,6 +621,20 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
         # "callee never assigns" is already visible via row["callee_writes"].
         return
     line, _col, snippet, saw_do = rbw
+    # Only reached when there IS a read-before-write, so shared-state and
+    # array-in buckets hold real reads — not merely an allowlisted name.
+    if formal.upper() in SHARED_STATE:
+        # Split by whether the callee also mutates the shared state:
+        # read-only consumer vs in/out mutator.
+        mutates = ever_written(body, formal)
+        kind = "shared-state-rw" if mutates else "shared-state-ro"
+        note = "mutates" if mutates else "read-only"
+        row["rbw"] = {"line": line,
+                      "snippet": "(shared-state " + note + " in "
+                                 + SHARED_STATE[formal.upper()] + ": " + snippet + ")",
+                      "status": kind}
+        rbw_rows.append((row, (line, 0, snippet, False)))
+        return
     # `.DA` byref hands over an array (DA, DA(1), DA(2)…) — the M array-passing
     # idiom. Distinct from shared state: the caller owns the data. Split by
     # whether the callee mutates the array (in/out) or only reads it (input).
