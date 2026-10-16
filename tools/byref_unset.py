@@ -438,6 +438,19 @@ def guarded_before_write(body, name):
     return True  # never used at all in body — callee ignores it
 
 
+def ever_written(body, name):
+    """True when the callee assigns `name` anywhere in its body.
+
+    Used to split shared-state into read-only consumers vs mutators.
+    """
+    for n, text in body:
+        code = strip_comment(text)
+        for _c, kind in occs_of(code, name):
+            if kind == "WRITE":
+                return True
+    return False
+
+
 # Classic FileMan entry points write these names regardless of arg lists.
 # Keeps `S DIC=… D ^DIC` / `D ^DIR` from reading like read-before-write.
 KNOWN_OUTPUTS = {
@@ -559,9 +572,16 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
     """Decide read-before-write for one call. Resolves the `maybe` bucket by
     tracing DO targets (depth-capped) to see whether they write the formal."""
     if formal.upper() in SHARED_STATE:
-        row["rbw"] = {"line": 0, "snippet": "(shared-state in " + SHARED_STATE[formal.upper()] + ")",
-                      "status": "shared-state"}
-        rbw_rows.append((row, (0, 0, "(shared-state)", False)))
+        # Split by whether the callee also mutates the shared state:
+        # read-only consumer vs in/out mutator.
+        mutates = ever_written(body, formal)
+        kind = "shared-state-rw" if mutates else "shared-state-ro"
+        note = "mutates" if mutates else "read-only"
+        row["rbw"] = {"line": 0,
+                      "snippet": "(shared-state " + note + " in "
+                                 + SHARED_STATE[formal.upper()] + ")",
+                      "status": kind}
+        rbw_rows.append((row, (0, 0, "(shared-state " + note + ")", False)))
         return
     # `.DA` byref to hand over an input *array* (DA, DA(1), DA(2)…) — the M
     # array-passing idiom. Distinct from shared state: the caller owns the
