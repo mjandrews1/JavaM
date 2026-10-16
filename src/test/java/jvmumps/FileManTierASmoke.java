@@ -89,6 +89,12 @@ public final class FileManTierASmoke {
 
     static int runGoldenParse(String root) {
         System.out.println("### READ: routine parse + labels (golden subset)");
+        Path base = Path.of(root);
+        if (!Files.isDirectory(base)) {
+            // CI hosts have no FILEMAN_CORPUS — RUN cases still gate (they are self-contained).
+            System.out.println("  SKIP golden parse (no FILEMAN_CORPUS dir: " + root + ")");
+            return 0;
+        }
         int fail = 0;
         for (String rel : GOLDEN) {
             Path p = Path.of(root, rel);

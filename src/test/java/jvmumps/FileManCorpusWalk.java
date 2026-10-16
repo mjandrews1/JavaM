@@ -23,6 +23,10 @@ public final class FileManCorpusWalk {
 
     public static void main(String[] args) throws Exception {
         String base = args.length > 0 && Files.isDirectory(Path.of(args[0])) ? args[0] : root();
+        if (!Files.isDirectory(Path.of(base))) {
+            System.out.println("## FileMan corpus walk: SKIP (no FILEMAN_CORPUS dir: " + base + ")");
+            return;
+        }
         int limit = Integer.parseInt(System.getenv().getOrDefault("WALK_LIMIT", "0"));
         System.out.println("## FileMan corpus walk (FILEMAN_CORPUS=" + base + ")");
         System.out.println("### parse via LineRoutine.parseRoutine (JavaM) — read-only");
