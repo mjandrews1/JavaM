@@ -368,20 +368,62 @@ def occs_of(code: str, name: str):
 def read_before_write(body, name):
     """First unguarded read of name before any write. Returns (line, col, snippet, maybe_nested)
     or None. maybe_nested=True when a DO/XECUTE earlier in the body may have
-    written name via side effect (we cannot see into the callee)."""
+    written name via side effect (we cannot see into the callee).
+
+    A `$D(NAME`/`$G(NAME` guard on an *earlier* line shields later reads —
+    `Q:'$D(DA(1))` at the top of a body is the FileMan existence-check idiom.
+    """
     saw_do = False
+    guarded = False
     for n, text in body:
         code = strip_comment(text)
         if re.search(r"(?:^|[ \t:])(?:D|DO|X|XECUTE)(?:[: \t]|$)", code):
             # only count DOs that precede the read on this or earlier lines
             if not any(k == "READ_RAW" for _c, k in occs_of(code, name)):
                 saw_do = True
+        if name_guarded(code, name):
+            guarded = True
         for col, kind in occs_of(code, name):
             if kind == "READ_RAW":
+                if guarded:
+                    continue
                 return n, col, text.strip()[:100], saw_do
             if kind == "WRITE":
                 return None  # written before any raw read on this line — safe
     return None
+
+
+def name_guarded(code: str, name: str) -> bool:
+    """True when code tests `NAME` / `NAME(sub)` for existence ($D or $G)."""
+    up = name.upper()
+    for m in re.finditer(rf"\$(?:G|D)[ \t]*\([ \t]*({NAME})(\([^)]*\))?", code):
+        if m.group(1).upper() == up:
+            return True
+    return False
+
+
+def array_used_as_input(body, name):
+    """True when the byref formal is an input *array*, not an output scalar.
+
+    M idiom: `.DA` is passed byref to hand over the whole IEN stack
+    (`DA`, `DA(1)`, `DA(2)`…) for reading. Signature: the formal is used
+    **subscripted** at least once (`DA(1)`, `$D(DA(`, `$O(DA(`) and is never
+    written anywhere in the body.
+    """
+    up = name.upper()
+    subscripted = False
+    for n, text in body:
+        code = strip_comment(text)
+        spans = string_spans(code)
+        for _c, kind in occs_of(code, name):
+            if kind == "WRITE":
+                return False  # written → it is an output, not input-only
+        for m in re.finditer(rf"(?<![A-Za-z0-9%]){re.escape(name)}\s*\(", code, re.I):
+            if in_string(code, m.start(), spans):
+                continue
+            if m.group(0).split("(")[0].strip().upper() == up:
+                subscripted = True
+    return subscripted
 
 
 def guarded_before_write(body, name):
@@ -520,6 +562,14 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
         row["rbw"] = {"line": 0, "snippet": "(shared-state in " + SHARED_STATE[formal.upper()] + ")",
                       "status": "shared-state"}
         rbw_rows.append((row, (0, 0, "(shared-state)", False)))
+        return
+    # `.DA` byref to hand over an input *array* (DA, DA(1), DA(2)…) — the M
+    # array-passing idiom. Distinct from shared state: the caller owns the
+    # data; byref is how M passes an array, not a promise to write it.
+    if array_used_as_input(body, formal):
+        row["rbw"] = {"line": 0, "snippet": "(byref input array " + formal + ")",
+                      "status": "array-in"}
+        rbw_rows.append((row, (0, 0, "(array-in)", False)))
         return
     rbw = read_before_write(body, formal)
     if not rbw:
