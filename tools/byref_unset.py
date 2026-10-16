@@ -209,11 +209,39 @@ CMD_ONE = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ%")
 
 
 def is_cmd_pos(code: str, c: int) -> bool:
-    """True when col c starts a command slot (line start, dots, or after ':')."""
+    """True when col c is a command name (line start / after block dots).
+
+    `:` is NOT a command slot — in `S:Y="" Y="TO"` the `:` is a postcondition,
+    so the `Y` after it is an expression, not a command.
+    """
     i = c - 1
     while i >= 0 and code[i] in ". \t":
         i -= 1
-    return i < 0 or code[i] == ":"
+    return i < 0
+
+
+def is_cmd_name(code: str, c: int, end: int) -> bool:
+    """True when the single letter at c looks like a command name, not a var.
+
+    Command names are followed by whitespace plus an argument/next-command
+    (`S F=1`, `K DTOUT`, `N E1,E2`, `S (D,F,L,M)=""`). A trailing `=` / operator
+    means a variable use (`Y=""`), and a bare end-of-line is left alone.
+    """
+    j = end
+    while j < len(code) and code[j] in " \t":
+        j += 1
+    if j >= len(code):
+        return False
+    nxt = code[j]
+    # `S (D,F,L,M)=""` — command + group set, not a var with subscripts
+    if nxt == "(" and is_cmd_pos(code, c):
+        return True
+    if nxt in "=(),+-*/\\#!'<>[]":
+        return False
+    if is_cmd_pos(code, c):
+        return True
+    # mid-line: only if preceded by whitespace
+    return c > 0 and code[c - 1] in " \t"
 
 
 def split_target(target: str):
@@ -288,12 +316,15 @@ def occs_of(code: str, name: str):
         c = m.start()
         if in_string(code, c, spans):
             continue
-        # single-letter command words at a command slot are not variable uses
-        if len(m.group(0)) == 1 and m.group(0).upper() in CMD_ONE and is_cmd_pos(code, c):
-            continue
+        # writes win over command-name skipping (S:Y="" Y="TO" — the second Y)
         if c in writes:
             out.append((c, "WRITE"))
-        elif RE_GUARDED.search(code[:c]) or (guarded_at is not None and c > guarded_at):
+            continue
+        # single-letter command words at a command slot are not variable uses
+        if len(m.group(0)) == 1 and m.group(0).upper() in CMD_ONE \
+                and is_cmd_name(code, c, m.end()):
+            continue
+        if RE_GUARDED.search(code[:c]) or (guarded_at is not None and c > guarded_at):
             out.append((c, "READ_SAFE"))
         else:
             out.append((c, "READ_RAW"))
@@ -353,6 +384,119 @@ def apply_known_outputs(body, name):
             if outs and up in outs:
                 return True
     return False
+
+
+# ---- interprocedural write trace (resolves the `maybe` bucket) --------
+
+RE_DO_CMD = re.compile(rf"(?:^|[ \t:]){DOTS}(?:D|DO)(?::[^ \t]*)?[ \t]+(.+)$")
+RE_XE_CMD = re.compile(rf"(?:^|[ \t:]){DOTS}(?:X|XECUTE)(?:[: \t]|$)")
+
+
+def do_targets_in(body, upto_line=None):
+    """Yield (tag, rtn) for every DO target in body (up to and incl. upto_line).
+
+    Handles comma-lists: `D INIT,^DIR01,END,PAINT`. XECUTE yields (None, None).
+    """
+    for n, text in body:
+        if upto_line is not None and n > upto_line:
+            break
+        code = strip_comment(text)
+        if RE_XE_CMD.search(code):
+            yield None, None  # unknown — XECUTE target is data
+            continue
+        for m in RE_DO_CMD.finditer(code):
+            rest = m.group(1)
+            # cut the arg list and any postcond already handled; split on commas
+            # at depth 0 that separate *targets* (D A,B(1),C^R)
+            for part in split_commas(rest):
+                t = part.split("(")[0].strip()
+                if not t or t.startswith("."):
+                    continue
+                if t.startswith("$$"):
+                    t = t[2:]
+                if "^" in t:
+                    tag, rtn = t.split("^", 1)
+                    yield (tag or None), (rtn or None)
+                else:
+                    yield t, None
+
+
+def resolve_body(root, db, rtn, tag, cache, self_path=None):
+    """Body lines [(line,text)] of `tag^rtn` (or same-routine tag). None if unknown."""
+    if rtn:
+        key = rtn.upper()
+        if key not in cache:
+            p = find_path(db, rtn)
+            cache[key] = callee_labels(root / p) if p else {}
+        labs = cache[key]
+    else:
+        if not self_path:
+            return None
+        if self_path not in cache:
+            cache[self_path] = callee_labels(root / self_path)
+        labs = cache[self_path]
+    if not tag:
+        return None
+    info = labs.get(tag.upper())
+    return info[2] if info else None
+
+
+def writes_name(body, name, root, db, cache, self_path=None, depth=0, seen=None):
+    """True if body (or a callee it reaches) writes `name` before any read.
+
+    Depth-capped at 3. Same-routine DO targets resolve through self_path.
+    """
+    if seen is None:
+        seen = set()
+    if depth > 3 or body is None:
+        return False
+    for n, text in body:
+        code = strip_comment(text)
+        for _col, kind in occs_of(code, name):
+            if kind == "WRITE":
+                return True
+            if kind == "READ_RAW":
+                return False
+        # no use of name on this line — follow DO targets it makes
+        for tag, rtn in do_targets_in([(n, text)]):
+            sig = (rtn, tag, name.upper())
+            if sig in seen:
+                continue
+            seen.add(sig)
+            sub = resolve_body(root, db, rtn, tag, cache, self_path)
+            if sub and writes_name(sub, name, root, db, cache, self_path, depth + 1, seen):
+                return True
+    return False
+
+
+def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=None):
+    """Decide read-before-write for one call. Resolves the `maybe` bucket by
+    tracing DO targets (depth-capped) to see whether they write the formal."""
+    rbw = read_before_write(body, formal)
+    if not rbw:
+        if not guarded_before_write(body, formal) and not apply_known_outputs(body, formal):
+            row["rbw"] = {"line": 0, "snippet": "(not written in body)", "status": "conclusive"}
+            rbw_rows.append((row, (0, 0, "(not written in body)", False)))
+        return
+    line, _col, snippet, saw_do = rbw
+    if apply_known_outputs(body, formal):
+        row["rbw"] = {"line": line, "snippet": "(known-output: " + snippet + ")",
+                      "status": "known-output"}
+        rbw_rows.append((row, (line, 0, snippet, False)))
+        return
+    if not saw_do:
+        row["rbw"] = {"line": line, "snippet": snippet, "status": "conclusive"}
+        rbw_rows.append((row, rbw))
+        return
+    # nested DO/XECUTE precede the read — trace whether they write the formal
+    upto = [(n, t) for (n, t) in body if n <= line]
+    if writes_name(upto, formal, root, db, label_cache, self_path):
+        row["rbw"] = {"line": line, "snippet": "(written by nested DO: " + snippet + ")",
+                      "status": "resolved"}
+        rbw_rows.append((row, (line, 0, snippet, False)))
+    else:
+        row["rbw"] = {"line": line, "snippet": snippet, "status": "conclusive"}
+        rbw_rows.append((row, (line, 0, snippet, False)))
 
 
 def enclosing_formals(lines, line_no, path_labels):
@@ -450,15 +594,9 @@ def analyze(db: sqlite3.Connection, root: Path, limit: int):
                 formal = formals[pos - 1]
                 row["formal"] = formal
                 if formal:
-                    rbw = read_before_write(body, formal)
-                    if rbw and not apply_known_outputs(body, formal):
-                        row["rbw"] = {"line": rbw[0], "snippet": rbw[2], "maybe_nested": rbw[3]}
-                        rbw_rows.append((row, rbw))
-                    elif rbw:
-                        row["rbw"] = {"line": rbw[0], "snippet": "(known-output: " + rbw[2] + ")"}
-                    elif not guarded_before_write(body, formal) and not apply_known_outputs(body, formal):
-                        row["rbw"] = {"line": 0, "snippet": "(not written in body)", "maybe_nested": False}
-                        rbw_rows.append((row, (0, 0, "(not written in body)", False)))
+                    callee_path = find_path(db, rtn) if rtn else path
+                    classify_rbw(row, body, formal, root, db, label_cache, rbw_rows,
+                                 self_path=callee_path)
         rows.append(row)
         unset_by_target[target] = unset_by_target.get(target, 0) + 1
         unset_by_name[bname] = unset_by_name.get(bname, 0) + 1
@@ -504,10 +642,10 @@ def report(rows, summary, samples: int) -> None:
 
 
 def report_rbw(rbw_rows, samples: int) -> None:
-    concl = [(r, x) for r, x in rbw_rows if not (len(x) > 3 and x[3])]
-    maybe = [(r, x) for r, x in rbw_rows if len(x) > 3 and x[3]]
+    concl = [(r, x) for r, x in rbw_rows if r.get("rbw", {}).get("status") == "conclusive"]
+    other = [(r, x) for r, x in rbw_rows if r.get("rbw", {}).get("status") != "conclusive"]
     print("\n## callee reads the formal before setting it")
-    print(f"   conclusive: {len(concl)}   maybe (nested DO could write it): {len(maybe)}")
+    print(f"   conclusive: {len(concl)}   resolved/known-output: {len(other)}")
     print("   (unset actual + callee uses the formal raw before any write)")
     print(f"\n### conclusive (up to {samples})")
     for (row, rbw) in concl[:samples]:
@@ -518,13 +656,12 @@ def report_rbw(rbw_rows, samples: int) -> None:
         print(f"     callee:{rbw[0]}  {rbw[2]}")
     if len(concl) > samples:
         print(f"\n  … {len(concl) - samples} more conclusive")
-    if maybe:
-        print(f"\n### maybe (nested DO/XECUTE earlier in body) — up to {max(0, samples // 2)}")
-        for (row, rbw) in maybe[: max(0, samples // 2)]:
-            print(
-                f"  {row['routine']}:{row['line']}  {row['target']}({row['src']})"
-                f"  formal={row['formal']}  callee:{rbw[0]}"
-            )
+    if other:
+        print(f"\n### resolved / known-output — up to {max(0, samples // 2)}")
+        for (row, _rbw) in other[: max(0, samples // 2)]:
+            st = row.get("rbw", {}).get("status")
+            sn = row.get("rbw", {}).get("snippet", "")
+            print(f"  [{st}]  {row['routine']}:{row['line']}  {row['target']}({row['src']})  {sn[:70]}")
 
 
 def main() -> int:
