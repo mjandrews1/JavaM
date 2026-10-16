@@ -58,16 +58,16 @@ public final class ExprEval {
 
         /** J13: $$tag(args) extrinsic — run a routine tag, return QUIT expr. */
         default MValue extrinsic(String name, List<MValue> args) {
-            return extrinsic(name, args, null);
+            throw new MError("Extrinsic $$" + name + " not available");
         }
 
         /**
          * Extracinsic with pass-by-reference {@code .var} args (FileMan).
          * {@code byrefs.get(i)} is the caller's actual name when arg i is
-         * byref; else null. Default ignores byrefs (value-only hosts).
+         * byref; else null. Default ignores byrefs → value-only hosts.
          */
         default MValue extrinsic(String name, List<MValue> args, List<String> byrefs) {
-            throw new MError("Extrinsic $$" + name + " not available");
+            return extrinsic(name, args);
         }
     }
 
