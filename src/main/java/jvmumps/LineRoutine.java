@@ -1,7 +1,9 @@
 package jvmumps;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Routine / DO / GOTO / QUIT / extrinsic runner for {@link LineInterp} (deep split, #58). */
 final class LineRoutine {
@@ -89,7 +91,8 @@ final class LineRoutine {
         fe.state.doStack.clear();
         runLoop(fe);
         fe.state.routineMode = false;
-        fe.state.prog = null;
+        // Keep prog/tags linked: $$ / DO tag must find labels after the
+        // top-down run (J13 / FileMan Tier A). Only clearRun drops them.
     }
 
     static void runLoop(LineInterp fe) {
@@ -130,16 +133,66 @@ final class LineRoutine {
     }
 
     static void bindFormals(LineInterp fe, LineState.RtLine line, List<MValue> args) {
+        bindFormals(fe, line, args, null, null);
+    }
+
+    /**
+     * Bind formals at call time. {@code byrefs[i]} is the caller's actual
+     * variable name when arg i is pass-by-reference {@code .var} (FileMan
+     * idiom); else null. Copy-in current value; copy-out runs in
+     * {@link #copyOutByref}. Mapping is recorded on {@code frame} when given.
+     */
+    static void bindFormals(LineInterp fe, LineState.RtLine line, List<MValue> args,
+                            List<String> byrefs, LineState.Frame frame) {
         if (line.formals == null) {
             return;
         }
         for (int i = 0; i < line.formals.size(); i++) {
-            MValue v = i < args.size() ? args.get(i) : MValue.EMPTY;
-            fe.eval.set(line.formals.get(i), v);
+            String formal = line.formals.get(i);
+            String by = byrefs != null && i < byrefs.size() ? byrefs.get(i) : null;
+            if (by != null) {
+                MValue cur = MValue.EMPTY;
+                try {
+                    cur = fe.eval.eval(by);
+                } catch (MError ignored) {
+                    // undefined actual — FileMan often passes unset .var
+                }
+                fe.eval.set(formal, cur);
+                if (frame != null && frame.byref != null) {
+                    frame.byref.put(formal.toUpperCase(), by);
+                }
+            } else {
+                MValue v = i < args.size() ? args.get(i) : MValue.EMPTY;
+                fe.eval.set(formal, v);
+            }
+        }
+    }
+
+    /** Copy byref formals back to caller names (pass-by-reference). */
+    static void copyOutByref(LineInterp fe, Map<String, String> byref) {
+        if (byref == null || byref.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, String> e : byref.entrySet()) {
+            String formal = e.getKey();
+            String actual = e.getValue();
+            MValue v = MValue.EMPTY;
+            try {
+                v = fe.eval.eval(formal);
+            } catch (MError ignored) {
+            }
+            fe.eval.set(actual, v);
+            if (!formal.equalsIgnoreCase(actual)) {
+                fe.eval.set(formal, MValue.EMPTY); // kill formal if it was a distinct local
+            }
         }
     }
 
     static MValue callExtrinsic(LineInterp fe, String name, List<MValue> args) {
+        return callExtrinsic(fe, name, args, null);
+    }
+
+    static MValue callExtrinsic(LineInterp fe, String name, List<MValue> args, List<String> byrefs) {
         if (name != null && name.equalsIgnoreCase("PEMDAS")) {
             return PemdasEval.call(args);
         }
@@ -159,18 +212,24 @@ final class LineRoutine {
         fe.state.pendingRest = null;
         fe.quit = false;
         fe.state.extrinsicValue = MValue.EMPTY;
-        bindFormals(fe, tl, args);
+        LineState.Frame frame = new LineState.Frame(savePc, saveRest, true, savedFormals);
+        bindFormals(fe, tl, args, byrefs, frame);
         int stackBase = fe.state.doStack.size();
-        fe.state.doStack.push(new LineState.Frame(savePc, saveRest, true, savedFormals));
+        fe.state.doStack.push(frame);
         fe.state.pc = target;
+        boolean saveRoutineMode = fe.state.routineMode;
+        fe.state.routineMode = true; // Q inside $$ must pop the frame / kill formals
         runLoop(fe);
+        fe.state.routineMode = saveRoutineMode;
         // unwind if the target forgot QUIT
         while (fe.state.doStack.size() > stackBase) {
             LineState.Frame f = fe.state.doStack.pop();
+            copyOutByref(fe, f.byref);
             if (f.extrinsic) {
                 break;
             }
         }
+        copyOutByref(fe, frame.byref);
         MValue v = fe.state.extrinsicValue;
         fe.state.extrinsicValue = saveVal;
         fe.state.pc = savePc;
@@ -201,9 +260,10 @@ final class LineRoutine {
             }
         }
         List<MValue> args = new ArrayList<>();
+        List<String> byrefs = new ArrayList<>();
         if (c.peek() == '(') {
             c.next();
-            args = fe.evalArgs(c);
+            args = fe.evalArgs(c, byrefs);
             if (c.peek() == ')') {
                 c.next();
             }
@@ -219,8 +279,9 @@ final class LineRoutine {
         if (tl.formals != null) {
             savedFormals = new ArrayList<>(tl.formals);
         }
-        fe.state.doStack.push(new LineState.Frame(retLine, retRest, extrinsic, savedFormals));
-        bindFormals(fe, tl, args);
+        LineState.Frame frame = new LineState.Frame(retLine, retRest, extrinsic, savedFormals);
+        bindFormals(fe, tl, args, byrefs, frame);
+        fe.state.doStack.push(frame);
         fe.state.pc = ix;
         fe.state.pendingRest = null;
     }
@@ -246,11 +307,8 @@ final class LineRoutine {
             return;
         }
         LineState.Frame f = fe.state.doStack.pop();
-        if (f.savedFormals != null) {
-            for (String n : f.savedFormals) {
-                fe.eval.set(n, MValue.EMPTY);
-            }
-        }
+        copyOutByref(fe, f.byref);
+        killNonByrefFormals(fe, f);
         if (f.extrinsic) {
             fe.quit = true; // end callExtrinsic runLoop
             return;
@@ -267,17 +325,27 @@ final class LineRoutine {
             return;
         }
         LineState.Frame f = fe.state.doStack.pop();
-        if (f.savedFormals != null) {
-            for (String n : f.savedFormals) {
-                fe.eval.set(n, MValue.EMPTY);
-            }
-        }
+        copyOutByref(fe, f.byref);
+        killNonByrefFormals(fe, f);
         if (f.extrinsic) {
             fe.quit = true;
             return;
         }
         fe.state.pc = f.retLine;
         fe.state.pendingRest = f.retRest == null ? "" : f.retRest;
+    }
+
+    /** Kill formals on return, but never the caller's byref actuals. */
+    static void killNonByrefFormals(LineInterp fe, LineState.Frame f) {
+        if (f.savedFormals == null) {
+            return;
+        }
+        for (String n : f.savedFormals) {
+            if (f.byref.containsKey(n.toUpperCase())) {
+                continue;
+            }
+            fe.eval.set(n, MValue.EMPTY);
+        }
     }
 
 }

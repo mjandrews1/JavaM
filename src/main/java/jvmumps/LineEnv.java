@@ -52,6 +52,11 @@ final class LineEnv implements ExprEval.Env {
 
     @Override
     public MValue extrinsic(String name, List<MValue> args) {
-        return LineRoutine.callExtrinsic(fe, name, args);
+        return LineRoutine.callExtrinsic(fe, name, args, null);
+    }
+
+    @Override
+    public MValue extrinsic(String name, List<MValue> args, List<String> byrefs) {
+        return LineRoutine.callExtrinsic(fe, name, args, byrefs);
     }
 }
