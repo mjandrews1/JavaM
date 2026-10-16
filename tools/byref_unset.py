@@ -700,6 +700,7 @@ def analyze(db: sqlite3.Connection, root: Path, limit: int):
             "name": bname,
             "last_event": last or "NONE",
             "formal": None,
+            "callee_writes": None,
             "rbw": None,
         }
         # ---- callee-side: does the formal get read before it is written? ----
@@ -723,6 +724,10 @@ def analyze(db: sqlite3.Connection, root: Path, limit: int):
                 formal = formals[pos - 1]
                 row["formal"] = formal
                 if formal:
+                    # Does the callee assign the formal at all? Splits the
+                    # unset-at-call population: output-only / in-out (writes)
+                    # vs a read of something the caller never set (read-only).
+                    row["callee_writes"] = ever_written(body, formal)
                     callee_path = find_path(db, rtn) if rtn else path
                     classify_rbw(row, body, formal, root, db, label_cache, rbw_rows,
                                  self_path=callee_path)
