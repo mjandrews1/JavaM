@@ -46,6 +46,8 @@ RE_SET_INDIR = re.compile(rf"\$[A-Z]+[ \t]*\([ \t]*({NAME})")
 RE_FOR = re.compile(rf"(?:^|[ \t:]){DOTS}(?:F|FOR)(?::[^ \t]*)?[ \t]+({NAME})[ \t]*[=(]")
 RE_NEW = re.compile(rf"(?:^|[ \t:]){DOTS}(?:N|NEW)(?::[^ \t]*)?[ \t]+(.+)$")
 RE_KILL = re.compile(rf"(?:^|[ \t:]){DOTS}(?:K|KILL)(?::[^ \t]*)?[ \t]+(.+)$")
+# R / READ assigns to its target (device input) — `R %XX`, `R REC#255`, `R X:5`
+RE_READ = re.compile(rf"(?:^|[ \t:]){DOTS}(?:R|READ)(?::[^ \t]*)?[ \t]+(.+)$")
 RE_NAME = re.compile(rf"{NAME}")
 
 
@@ -164,6 +166,12 @@ def events_for_code(code: str):
             nm = name_of(part)
             if nm:
                 ev.append((name_col(part, m.start(1) + off), "KILL", nm))
+    # R / READ assigns device input to its target: `R %XX`, `R REC#255`, `R X:5`
+    for m in RE_READ.finditer(code):
+        for off, part in split_commas_pos(m.group(1)):
+            nm = name_of(part)  # leading name; strips #len / :timeout
+            if nm:
+                ev.append((name_col(part, m.start(1) + off), "SET", nm))
     # .name inside an arg list (after ( or ,) is a byref pass — callee may write it.
     # Not the dotted-block depth marker (".K DA", ".S X=1"): those have no ( or , before.
     for m in re.finditer(rf"[(,][ \t]*\.({NAME})", code):
@@ -379,6 +387,9 @@ KNOWN_OUTPUTS = {
 SHARED_STATE = {
     # DDW screen editor: initialized in DDW.m:65 `S DDWOFS="0^20^^1",…`
     "DDWOFS": "DDW.m",
+    # FileMan lookup-index descriptor: written in 20+ DIC* sites
+    # (DIC5/DICF/DICF0/DICF2/DICL/DICUIX), threaded through the lookup driver.
+    "DINDEX": "DIC* lookup driver",
 }
 
 
