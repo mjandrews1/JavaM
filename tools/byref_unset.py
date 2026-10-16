@@ -48,6 +48,8 @@ RE_NEW = re.compile(rf"(?:^|[ \t:]){DOTS}(?:N|NEW)(?::[^ \t]*)?[ \t]+(.+)$")
 RE_KILL = re.compile(rf"(?:^|[ \t:]){DOTS}(?:K|KILL)(?::[^ \t]*)?[ \t]+(.+)$")
 # R / READ assigns to its target (device input) — `R %XX`, `R REC#255`, `R X:5`
 RE_READ = re.compile(rf"(?:^|[ \t:]){DOTS}(?:R|READ)(?::[^ \t]*)?[ \t]+(.+)$")
+# M / MERGE assigns its left-hand name (possibly subscripted): `M A=B`, `M A(1)=B`
+RE_MERGE = re.compile(rf"(?:^|[ \t:]){DOTS}(?:M|MERGE)(?::[^ \t]*)?[ \t]+(.+)$")
 RE_NAME = re.compile(rf"{NAME}")
 
 
@@ -172,6 +174,12 @@ def events_for_code(code: str):
             nm = name_of(part)  # leading name; strips #len / :timeout
             if nm:
                 ev.append((name_col(part, m.start(1) + off), "SET", nm))
+    # M / MERGE writes its left-hand side: `M A=B`, `M A(1)=B`, `M A=^G`
+    for m in RE_MERGE.finditer(code):
+        lhs = m.group(1).split("=", 1)[0]
+        nm = name_of(lhs)
+        if nm:
+            ev.append((name_col(lhs, m.start(1)), "SET", nm))
     # .name inside an arg list (after ( or ,) is a byref pass — callee may write it.
     # Not the dotted-block depth marker (".K DA", ".S X=1"): those have no ( or , before.
     for m in re.finditer(rf"[(,][ \t]*\.({NAME})", code):
@@ -402,28 +410,24 @@ def name_guarded(code: str, name: str) -> bool:
     return False
 
 
-def array_used_as_input(body, name):
-    """True when the byref formal is an input *array*, not an output scalar.
+def used_as_array(body, name):
+    """True when the byref formal is used *as an array* — subscripted at least
+    once (`DA(1)`, `$D(DA(`, `$O(DA(`). This is what the `.var` byref is for:
+    M passes an array by reference, not by value.
 
-    M idiom: `.DA` is passed byref to hand over the whole IEN stack
-    (`DA`, `DA(1)`, `DA(2)`…) for reading. Signature: the formal is used
-    **subscripted** at least once (`DA(1)`, `$D(DA(`, `$O(DA(`) and is never
-    written anywhere in the body.
+    Says nothing about whether the callee writes it — see `ever_written` to
+    split input-only arrays from in/out arrays.
     """
     up = name.upper()
-    subscripted = False
     for n, text in body:
         code = strip_comment(text)
         spans = string_spans(code)
-        for _c, kind in occs_of(code, name):
-            if kind == "WRITE":
-                return False  # written → it is an output, not input-only
         for m in re.finditer(rf"(?<![A-Za-z0-9%]){re.escape(name)}\s*\(", code, re.I):
             if in_string(code, m.start(), spans):
                 continue
             if m.group(0).split("(")[0].strip().upper() == up:
-                subscripted = True
-    return subscripted
+                return True
+    return False
 
 
 def guarded_before_write(body, name):
@@ -583,14 +587,6 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
                       "status": kind}
         rbw_rows.append((row, (0, 0, "(shared-state " + note + ")", False)))
         return
-    # `.DA` byref to hand over an input *array* (DA, DA(1), DA(2)…) — the M
-    # array-passing idiom. Distinct from shared state: the caller owns the
-    # data; byref is how M passes an array, not a promise to write it.
-    if array_used_as_input(body, formal):
-        row["rbw"] = {"line": 0, "snippet": "(byref input array " + formal + ")",
-                      "status": "array-in"}
-        rbw_rows.append((row, (0, 0, "(array-in)", False)))
-        return
     rbw = read_before_write(body, formal)
     if not rbw:
         if not guarded_before_write(body, formal) and not apply_known_outputs(body, formal):
@@ -598,6 +594,20 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
             rbw_rows.append((row, (0, 0, "(not written in body)", False)))
         return
     line, _col, snippet, saw_do = rbw
+    # `.DA` byref hands over an array (DA, DA(1), DA(2)…) — the M array-passing
+    # idiom. Distinct from shared state: the caller owns the data. Split by
+    # whether the callee mutates the array (in/out) or only reads it (input).
+    # Only reached when there *is* a read-before-write, so safe (write-first)
+    # arrays stay in "callee safe".
+    if used_as_array(body, formal):
+        mutates = ever_written(body, formal)
+        kind = "array-in-rw" if mutates else "array-in-ro"
+        note = "mutates" if mutates else "read-only"
+        row["rbw"] = {"line": line,
+                      "snippet": "(byref array " + note + " " + formal + ": " + snippet + ")",
+                      "status": kind}
+        rbw_rows.append((row, (line, 0, snippet, False)))
+        return
     if apply_known_outputs(body, formal):
         row["rbw"] = {"line": line, "snippet": "(known-output: " + snippet + ")",
                       "status": "known-output"}
