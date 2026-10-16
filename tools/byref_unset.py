@@ -373,6 +373,14 @@ KNOWN_OUTPUTS = {
     "DIPZ": ["Y", "DTOUT", "DUOUT"],
 }
 
+# Cross-routine shared state: set once at subsystem entry, read in callees.
+# Same-routine analysis reports last=NONE correctly but cannot see the
+# initializer (it is not in the call tree). Allowlist by name.
+SHARED_STATE = {
+    # DDW screen editor: initialized in DDW.m:65 `S DDWOFS="0^20^^1",…`
+    "DDWOFS": "DDW.m",
+}
+
 
 def apply_known_outputs(body, name):
     """True if some line does `D ^X`/`D ^X…` whose known outputs include name."""
@@ -472,6 +480,11 @@ def writes_name(body, name, root, db, cache, self_path=None, depth=0, seen=None)
 def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=None):
     """Decide read-before-write for one call. Resolves the `maybe` bucket by
     tracing DO targets (depth-capped) to see whether they write the formal."""
+    if formal.upper() in SHARED_STATE:
+        row["rbw"] = {"line": 0, "snippet": "(shared-state in " + SHARED_STATE[formal.upper()] + ")",
+                      "status": "shared-state"}
+        rbw_rows.append((row, (0, 0, "(shared-state)", False)))
+        return
     rbw = read_before_write(body, formal)
     if not rbw:
         if not guarded_before_write(body, formal) and not apply_known_outputs(body, formal):
