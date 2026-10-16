@@ -367,7 +367,7 @@ def guarded_before_write(body, name):
 # Keeps `S DIC=… D ^DIC` / `D ^DIR` from reading like read-before-write.
 KNOWN_OUTPUTS = {
     "DIC": ["Y", "DIC", "DTOUT", "DUOUT", "DIRUT", "DIROUT"],
-    "DIR": ["Y", "DTOUT", "DUOUT", "DIRUT", "DIROUT"],
+    "DIR": ["Y", "DIR", "DTOUT", "DUOUT", "DIRUT", "DIROUT"],
     "DIE": ["DA", "DTOUT", "DUOUT", "DIROUT", "DR"],
     "DIK": ["DA", "DIK"],
     "DIPZ": ["Y", "DTOUT", "DUOUT"],
