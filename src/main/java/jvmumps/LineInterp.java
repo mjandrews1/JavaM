@@ -138,13 +138,37 @@ public final class LineInterp {
     }
 
     List<MValue> evalArgs(Cursor c) {
+        return evalArgs(c, null);
+    }
+
+    /**
+     * Parse a DO/extrinsic arg list. {@code byrefs} (when non-null) receives
+     * the caller's actual variable name for {@code .var} pass-by-reference
+     * args (FileMan idiom); null entry = by-value.
+     */
+    List<MValue> evalArgs(Cursor c, List<String> byrefs) {
         List<MValue> args = new ArrayList<>();
         if (c.peek() == ')') {
             return args;
         }
         while (!c.atEnd()) {
-            String ex = c.readExpr();
-            args.add(eval.eval(ex));
+            c.skipWs();
+            if (c.peek() == '.' && c.i + 1 < c.s.length()
+                    && Character.isLetter(c.s.charAt(c.i + 1))) {
+                // pass-by-reference .name
+                c.next();
+                String nm = readTagName(c);
+                args.add(MValue.EMPTY);
+                if (byrefs != null) {
+                    byrefs.add(nm);
+                }
+            } else {
+                String ex = c.readExpr();
+                args.add(eval.eval(ex));
+                if (byrefs != null) {
+                    byrefs.add(null);
+                }
+            }
             c.skipWs();
             if (c.peek() == ',') {
                 c.next();

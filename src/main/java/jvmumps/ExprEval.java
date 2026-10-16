@@ -60,6 +60,15 @@ public final class ExprEval {
         default MValue extrinsic(String name, List<MValue> args) {
             throw new MError("Extrinsic $$" + name + " not available");
         }
+
+        /**
+         * Extracinsic with pass-by-reference {@code .var} args (FileMan).
+         * {@code byrefs.get(i)} is the caller's actual name when arg i is
+         * byref; else null. Default ignores byrefs → value-only hosts.
+         */
+        default MValue extrinsic(String name, List<MValue> args, List<String> byrefs) {
+            return extrinsic(name, args);
+        }
     }
 
     public ExprEval(Env env) {
@@ -454,16 +463,17 @@ public final class ExprEval {
             if (t.kind == ExprTokens.Kind.NAME || t.kind == ExprTokens.Kind.GLOBAL) {
                 i++;
                 if (t.text.startsWith("$$")) {
-                    // J13 extrinsic $$tag(args)
+                    // J13 extrinsic $$tag(args) — may include pass-by-ref .var
                     List<MValue> args = new ArrayList<>();
+                    List<String> byrefs = new ArrayList<>();
                     if (peek().kind == ExprTokens.Kind.LP) {
                         i++;
-                        args = argList();
+                        argList(args, byrefs);
                         if (peek().kind == ExprTokens.Kind.RP) {
                             i++;
                         }
                     }
-                    return env.extrinsic(t.text.substring(2), args);
+                    return env.extrinsic(t.text.substring(2), args, byrefs);
                 }
                 if (t.text.startsWith("$")) {
                     String un = t.text.toUpperCase();
@@ -510,18 +520,44 @@ public final class ExprEval {
 
         List<MValue> argList() {
             List<MValue> args = new ArrayList<>();
+            argList(args, null);
+            return args;
+        }
+
+        /**
+         * Fill {@code args}; when {@code byrefs} is non-null, also record the
+         * caller's actual variable name for {@code .var} pass-by-reference
+         * args (FileMan idiom). Null byref entry = by-value.
+         */
+        void argList(List<MValue> args, List<String> byrefs) {
             if (peek().kind == ExprTokens.Kind.RP) {
-                return args;
+                return;
             }
             while (true) {
-                args.add(expr());
+                // pass-by-reference .name (not a decimal literal — those are NUM)
+                if (peek().kind == ExprTokens.Kind.OP && ".".equals(peek().text)
+                        && i + 1 < toks.size()
+                        && toks.get(i + 1).kind == ExprTokens.Kind.NAME
+                        && !toks.get(i + 1).text.startsWith("$")) {
+                    i++; // consume '.'
+                    String nm = toks.get(i).text;
+                    i++;
+                    args.add(MValue.EMPTY);
+                    if (byrefs != null) {
+                        byrefs.add(nm);
+                    }
+                } else {
+                    args.add(expr());
+                    if (byrefs != null) {
+                        byrefs.add(null);
+                    }
+                }
                 if (peek().kind == ExprTokens.Kind.COMMA) {
                     i++;
                     continue;
                 }
                 break;
             }
-            return args;
         }
 
         /**

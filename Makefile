@@ -19,6 +19,9 @@ OUT   := build
 LIBS  := lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar
 CP    := $(OUT):$(LIBS)
 CORPUS ?= ../pymumps/tests/conformance.json
+# FileMan Tier A (jvmumps#32) — env, never hardcoded in tests.
+FILEMAN_CORPUS ?= $(HOME)/_fileman
+export FILEMAN_CORPUS
 
 # All *Smoke test mains (src/test/java/jvmumps/*Smoke.java). J0 takes CORPUS.
 SMOKE_CLASSES := $(patsubst src/test/java/jvmumps/%.java,%,$(wildcard src/test/java/jvmumps/*Smoke.java))

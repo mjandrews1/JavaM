@@ -29,6 +29,8 @@ final class LineState {
         final String retRest;
         final boolean extrinsic;
         final List<String> savedFormals;
+        /** formal name (upper) → caller actual name, for pass-by-reference `.var` args. */
+        final Map<String, String> byref = new LinkedHashMap<>();
 
         Frame(int retLine, String retRest, boolean extrinsic, List<String> savedFormals) {
             this.retLine = retLine;
