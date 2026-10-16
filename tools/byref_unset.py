@@ -337,13 +337,20 @@ def in_string(code: str, col: int, spans) -> bool:
 
 
 def occs_of(code: str, name: str):
-    """Classify every use of name on a line: WRITE / READ_SAFE / READ_RAW.
+    """Classify every use of name on a line: WRITE / UNDEF / READ_SAFE / READ_RAW.
+
+    WRITE is a real assignment (SET / MERGE / READ / byref). NEW and KILL
+    *undefine* the name — `N X` then `W X` is an UNDEF, not safe — so they
+    get their own UNDEF kind.
 
     Skips string literals (DIR("X") is not a use of X). A $G(NAME)/$D(NAME)
     guard earlier on the line shields later reads on that line (FileMan idiom
     `I $G(X)]"" … S Y=X`).
     """
-    writes = {c for (c, _k, n) in events_for_code(code) if n.upper() == name.upper()}
+    set_cols = {c for (c, k, n) in events_for_code(code)
+                if n.upper() == name.upper() and k == "SET"}
+    undef_cols = {c for (c, k, n) in events_for_code(code)
+                  if n.upper() == name.upper() and k in ("NEW", "KILL")}
     spans = string_spans(code)
     tgts = do_target_cols(code)
     guarded_at = None
@@ -358,8 +365,11 @@ def occs_of(code: str, name: str):
         if in_string(code, c, spans):
             continue
         # writes win over command-name skipping (S:Y="" Y="TO" — the second Y)
-        if c in writes:
+        if c in set_cols:
             out.append((c, "WRITE"))
+            continue
+        if c in undef_cols:
+            out.append((c, "UNDEF"))
             continue
         # DO/GOTO/$$ target names are not variable uses (D DA(RIENS,.DA))
         if c in tgts:
@@ -401,10 +411,10 @@ def read_before_write(body, name):
                     continue
                 return n, col, text.strip()[:100], saw_do
             if kind == "WRITE":
-                return None  # written before any raw read on this line — safe
+                return None  # assigned before any raw read — safe
+            # UNDEF (N / K) does not make a later read safe; keep scanning
         if gcol is not None:
             guarded = True
-    return None
     return None
 
 
@@ -490,6 +500,9 @@ SHARED_STATE = {
     # FileMan lookup-index descriptor: written in 20+ DIC* sites
     # (DIC5/DICF/DICF0/DICF2/DICL/DICUIX), threaded through the lookup driver.
     "DINDEX": "DIC* lookup driver",
+    # FileMan file number: set by the lookup driver (GETFILE / FLDVAL),
+    # read throughout DIC*/DIE* as the current file.
+    "DIFILEI": "DIC* lookup driver",
 }
 
 
@@ -528,7 +541,9 @@ def do_targets_in(body, upto_line=None):
             # cut the arg list and any postcond already handled; split on commas
             # at depth 0 that separate *targets* (D A,B(1),C^R)
             for part in split_commas(rest):
-                t = part.split("(")[0].strip()
+                # cut at "(" and at the next command word: `D FLDVAL G:…` is
+                # one DO plus a GOTO, not a target named "FLDVAL G:…"
+                t = part.split("(")[0].split()[0].strip() if part.split("(")[0].split() else ""
                 if not t or t.startswith("."):
                     continue
                 if t.startswith("$$"):
@@ -705,6 +720,13 @@ def analyze(db: sqlite3.Connection, root: Path, limit: int):
                 break
         if last == "SET" or bname.upper() in bound:
             continue
+        # A nested DO before the call may set the actual (FLDVAL sets DIEV0
+        # before AUXVAL reads it). Direct SET/NEW/KILL scanning cannot see
+        # through a call — trace the caller's DO targets up to the call line.
+        if last != "SET":
+            upto_call = [(n, t) for (n, t) in enumerate(lines, 1) if n < line]
+            if upto_call and writes_name(upto_call, bname, root, db, label_cache, self_path=path):
+                continue
         row = {
             "routine": rname,
             "path": path,
