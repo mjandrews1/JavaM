@@ -158,6 +158,35 @@ def strip_comment(line: str) -> str:
     return "".join(out)
 
 
+def mask_strings(code: str) -> str:
+    """Blank out double-quoted string interiors, preserving length/offsets.
+
+    Code-generators emit M source as string text (`D L(" Q $$UNIQUE^DIE17(.X,.DA,…")`)
+    — those are not live calls. Keeping offsets lets the same indexes work
+    on the masked text for arg splitting.
+    """
+    out, in_str, i = [], False, 0
+    while i < len(code):
+        c = code[i]
+        if in_str:
+            if c == '"':
+                if i + 1 < len(code) and code[i + 1] == '"':
+                    out.append("  ")
+                    i += 2
+                    continue
+                in_str = False
+                out.append(c)
+            else:
+                out.append(" ")
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def parse_routine(text: str):
     """Return (labels, calls, intrinsics, gaps).
 
@@ -178,10 +207,13 @@ def parse_routine(text: str):
         body = strip_comment(raw)
         if not body.strip():
             continue
-        for mm in RE_EXTRINSIC.finditer(body):
+        # scan masked text (no string interiors); arg text still read from
+        # `body` at the same offsets — mask_strings preserves length
+        code = mask_strings(body)
+        for mm in RE_EXTRINSIC.finditer(code):
             args = args_after(body, mm.end())
             calls.append((n, "EXTRINSIC", mm.group(0), mm.group(1), mm.group(3), args))
-        for mm in RE_DO.finditer(body):
+        for mm in RE_DO.finditer(code):
             if mm.group(1):  # $$ handled above
                 continue
             tag, ext = mm.group(2), mm.group(4)
@@ -189,20 +221,20 @@ def parse_routine(text: str):
                 tgt = (tag or "") + ("^" + ext if ext else "")
                 args = args_after(body, mm.end())
                 calls.append((n, "DO", tgt, tag, ext, args))
-        for mm in RE_GOTO.finditer(body):
+        for mm in RE_GOTO.finditer(code):
             tag, ext = mm.group(1), mm.group(3)
             if tag or ext:
                 tgt = (tag or "") + ("^" + ext if ext else "")
                 calls.append((n, "GOTO", tgt, tag, ext, []))
-        for mm in RE_INTRINSIC.finditer(body):
+        for mm in RE_INTRINSIC.finditer(code):
             name = mm.group(1).upper()
             if name.startswith("Z") or name in {"H", "I", "J", "K", "L", "N", "P", "Q", "R", "S", "T", "X"}:
                 intrinsics.append((n, name))
             elif name.isalpha() or any(c.isdigit() for c in name):
                 intrinsics.append((n, name))
-        for mm in RE_ZSTAR.finditer(body):
+        for mm in RE_ZSTAR.finditer(code):
             gaps.append((n, "ZSTAR", mm.group(0)))
-        for mm in RE_XCALL.finditer(body):
+        for mm in RE_XCALL.finditer(code):
             gaps.append((n, "XCALL", mm.group(0)[:40]))
     return labels, calls, intrinsics, gaps
 

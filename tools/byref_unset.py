@@ -228,6 +228,27 @@ def is_cmd_pos(code: str, c: int) -> bool:
     return i < 0
 
 
+RE_DO_TARGET = re.compile(
+    rf"(?:^|[ \t:.])(?:D|DO|G|GOTO)(?::[^ \t]*)?[ \t]+(\$\$)?({NAME})"
+)
+RE_EXTRINSIC_TGT = re.compile(rf"\$\$({NAME})")
+
+
+def do_target_cols(code: str):
+    """Columns of DO / GOTO / $$ target names (not variable uses).
+
+    `D DA(RIENS,.DA)` — the first `DA` is the tag being called; the `.DA`
+    after it is the byref actual. Reading the tag as a variable is a
+    false positive.
+    """
+    cols = set()
+    for m in RE_DO_TARGET.finditer(code):
+        cols.add(m.start(2))
+    for m in RE_EXTRINSIC_TGT.finditer(code):
+        cols.add(m.start(1))
+    return cols
+
+
 def is_cmd_name(code: str, c: int, end: int) -> bool:
     """True when the single letter at c looks like a command name, not a var.
 
@@ -313,6 +334,7 @@ def occs_of(code: str, name: str):
     """
     writes = {c for (c, _k, n) in events_for_code(code) if n.upper() == name.upper()}
     spans = string_spans(code)
+    tgts = do_target_cols(code)
     guarded_at = None
     for m in re.finditer(rf"\$(?:G|D)[ \t]*\([ \t]*({NAME})", code):
         if m.group(1).upper() == name.upper() and guarded_at is None:
@@ -327,6 +349,9 @@ def occs_of(code: str, name: str):
         # writes win over command-name skipping (S:Y="" Y="TO" — the second Y)
         if c in writes:
             out.append((c, "WRITE"))
+            continue
+        # DO/GOTO/$$ target names are not variable uses (D DA(RIENS,.DA))
+        if c in tgts:
             continue
         # single-letter command words at a command slot are not variable uses
         if len(m.group(0)) == 1 and m.group(0).upper() in CMD_ONE \
