@@ -150,10 +150,13 @@ def events_for_code(code: str):
                     if nm:
                         ev.append((name_col(gpart, base + gm.start(1) + goff), "SET", nm))
                 continue
-            # $P(NAME,…)= / $E(NAME,…)=  writes NAME (undefined-safe piece assign)
+            # $P(NAME,…)= / $E(NAME,…)=  writes NAME (undefined-safe piece assign).
+            # The target name is *inside* the parens, so use its own column —
+            # name_col(part) would return the `$P` position and the write would
+            # miss the later read/write of NAME.
             im = RE_SET_INDIR.match(part)
             if im:
-                ev.append((name_col(part, base), "SET", im.group(1)))
+                ev.append((base + im.start(1), "SET", im.group(1)))
                 continue
             nm = RE_SET_NAME.match(part)
             if nm:
@@ -382,32 +385,45 @@ def read_before_write(body, name):
     `Q:'$D(DA(1))` at the top of a body is the FileMan existence-check idiom.
     """
     saw_do = False
-    guarded = False
+    guarded = False   # an existence test on an *earlier* line
     for n, text in body:
         code = strip_comment(text)
         if re.search(r"(?:^|[ \t:])(?:D|DO|X|XECUTE)(?:[: \t]|$)", code):
             # only count DOs that precede the read on this or earlier lines
             if not any(k == "READ_RAW" for _c, k in occs_of(code, name)):
                 saw_do = True
-        if name_guarded(code, name):
-            guarded = True
+        gcol = name_guard_col(code, name)
         for col, kind in occs_of(code, name):
             if kind == "READ_RAW":
-                if guarded:
+                # shielded by an earlier line's guard, or by a guard earlier
+                # on this line (`$D(X)` then `X(1)`); not by a later one
+                if guarded or (gcol is not None and gcol < col):
                     continue
                 return n, col, text.strip()[:100], saw_do
             if kind == "WRITE":
                 return None  # written before any raw read on this line — safe
+        if gcol is not None:
+            guarded = True
+    return None
     return None
 
 
 def name_guarded(code: str, name: str) -> bool:
     """True when code tests `NAME` / `NAME(sub)` for existence ($D or $G)."""
+    return name_guard_col(code, name) is not None
+
+
+def name_guard_col(code: str, name: str):
+    """Column of the first `$D(NAME`/`$G(NAME` existence test, or None.
+
+    Only a guard *before* a read can shield it — `S (...)=Y S:$D(Y(0)) …`
+    reads Y first and tests Y(0) later on the same line.
+    """
     up = name.upper()
     for m in re.finditer(rf"\$(?:G|D)[ \t]*\([ \t]*({NAME})(\([^)]*\))?", code):
         if m.group(1).upper() == up:
-            return True
-    return False
+            return m.start(1)
+    return None
 
 
 def used_as_array(body, name):
@@ -589,9 +605,9 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
         return
     rbw = read_before_write(body, formal)
     if not rbw:
-        if not guarded_before_write(body, formal) and not apply_known_outputs(body, formal):
-            row["rbw"] = {"line": 0, "snippet": "(not written in body)", "status": "conclusive"}
-            rbw_rows.append((row, (0, 0, "(not written in body)", False)))
+        # read_before_write returns None when the formal is written first or
+        # every raw read is existence-guarded. Both are safe — do not flag.
+        # "callee never assigns" is already visible via row["callee_writes"].
         return
     line, _col, snippet, saw_do = rbw
     # `.DA` byref hands over an array (DA, DA(1), DA(2)…) — the M array-passing
