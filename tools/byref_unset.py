@@ -503,6 +503,14 @@ SHARED_STATE = {
     # FileMan file number: set by the lookup driver (GETFILE / FLDVAL),
     # read throughout DIC*/DIE* as the current file.
     "DIFILEI": "DIC* lookup driver",
+    # FileMan record number (IEN / IEN stack): set by the lookup driver
+    # (^DIC / ^DIE / the DDS screen driver), read everywhere.
+    "DA": "DIC*/DDS lookup driver",
+    # File spec (global ref or file number): set by the lookup driver,
+    # read as the current file in DIC*/DIE*.
+    "DIC": "DIC* lookup driver",
+    # Resolved file number: set by the lookup driver alongside DIFILEI.
+    "DIFILE": "DIC* lookup driver",
 }
 
 
