@@ -150,6 +150,7 @@ final class MFrontendCmds {
 
     static int compileWrite(MFrontend fe, String line, int i, List<Ir> out) {
         boolean pending = false;
+        boolean firstArg = true;
         if (i < line.length() && line.charAt(i) == ':') {
             i++;
             int cs = i;
@@ -169,6 +170,7 @@ final class MFrontendCmds {
             if (c == '!') {
                 out.add(Ir.writeNl());
                 pending = false;
+                firstArg = false;
                 i++;
                 i = MFrontendUtil.skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
@@ -191,6 +193,7 @@ final class MFrontendCmds {
                 out.addAll(tmp);
                 out.add(Ir.writeChar());
                 pending = true;
+                firstArg = false;
                 i = MFrontendUtil.skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
                 continue;
@@ -204,16 +207,18 @@ final class MFrontendCmds {
                 out.addAll(tmp);
                 out.add(Ir.writeCol());
                 pending = true;
+                firstArg = false;
                 i = MFrontendUtil.skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
                 continue;
             }
-            if (MFrontendUtil.isCmdStart(line, i)) break;
+            if (!firstArg && MFrontendUtil.isCmdStart(line, i)) break;
             if (c == '@') {
                 int k = MFrontendUtil.scanExprEnd(line, i + 1, " ,");
                 out.add(Ir.evalExpr(line.substring(i + 1, k).trim()));
                 out.add(Ir.writeArgs());
                 pending = true;
+                firstArg = false;
                 i = k;
                 i = MFrontendUtil.skipWs(line, i);
                 if (i < line.length() && line.charAt(i) == ',') i++;
@@ -223,6 +228,7 @@ final class MFrontendCmds {
             i = fe.compileExpr(line, i, out, ",");
             out.add(Ir.write());
             pending = true;
+            firstArg = false;
             if (i == before) {
                 throw new MError("WRITE could not parse at " + line.substring(i));
             }
