@@ -212,11 +212,45 @@ public final class MRuntime {
         return path;
     }
 
+    /**
+     * Subscript text → node name. Quoted subscripts are string data and keep
+     * their literal form ({@code ^DD("0.01")} → {@code 0.01}). Unquoted
+     * numeric subscripts are canonicalised the way M does when a number
+     * becomes a node name ({@code ^DD(0.01)} → {@code .01}, {@code 1.10}
+     * → {@code 1.1}) — see {@link jvmumps.ExprEval#mstr}. Without this,
+     * {@code $ORDER} returns the non-canonical form and FileMan's numeric
+     * field/index subscripts never compare equal to a literal (GAP-1).
+     */
     static String subOf(String s) {
         if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
             return s.substring(1, s.length() - 1);
         }
+        if (isNumericLiteral(s)) {
+            return jvmumps.ExprEval.mstr(Double.parseDouble(s));
+        }
         return s;
+    }
+
+    /** Plain numeric literal: optional sign, digits, optional fraction/exponent. */
+    private static boolean isNumericLiteral(String s) {
+        if (s.isEmpty()) return false;
+        int i = 0;
+        if (s.charAt(0) == '-' || s.charAt(0) == '+') i++;
+        boolean digits = false;
+        while (i < s.length() && Character.isDigit(s.charAt(i))) { i++; digits = true; }
+        if (i < s.length() && s.charAt(i) == '.') {
+            i++;
+            while (i < s.length() && Character.isDigit(s.charAt(i))) { i++; digits = true; }
+        }
+        if (!digits) return false;
+        if (i < s.length() && (s.charAt(i) == 'e' || s.charAt(i) == 'E')) {
+            i++;
+            if (i < s.length() && (s.charAt(i) == '-' || s.charAt(i) == '+')) i++;
+            boolean edig = false;
+            while (i < s.length() && Character.isDigit(s.charAt(i))) { i++; edig = true; }
+            if (!edig) return false;
+        }
+        return i == s.length();
     }
 
     public MValue getVar(String name) {

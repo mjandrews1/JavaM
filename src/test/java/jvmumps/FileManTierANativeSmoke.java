@@ -55,7 +55,6 @@ public final class FileManTierANativeSmoke {
      * removed from the register.
      */
     static final java.util.Set<String> KNOWN_GAPS = java.util.Set.of(
-            "fm.order-dec",        // GAP-1 numeric subscript canonicalisation on SET
             "fm.extrinsic",        // GAP-2 $$ after tagged-routine prelude
             "fm.extrinsic-byref"   // GAP-2
     );
