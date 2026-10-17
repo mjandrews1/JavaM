@@ -131,6 +131,66 @@ def name_col(part: str, base: int):
     return base + m.start(1) if m else base
 
 
+def _skip_parens(s: str, i: int) -> int:
+    """Index just past the balanced paren group opening at s[i] == '('."""
+    depth, in_str = 0, False
+    while i < len(s):
+        c = s[i]
+        if in_str:
+            if c == '"':
+                if i + 1 < len(s) and s[i + 1] == '"':
+                    i += 2
+                    continue
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(s)
+
+
+def set_targets(part: str):
+    """Names assigned by one SET comma-part: `NAME(sub)=`, `(a,b(1))=`,
+    `$P(NAME,…)=`. Yields (offset_of_name, name).
+
+    Balanced-paren aware — `S X(+^DD(F,0))=""` and `S X($P(N,U,2))=…` write X,
+    which a `[^)]*` subscript regex misses.
+    """
+    p = part
+    # group set  (a,b(1),c)=
+    if p.startswith("("):
+        inner_end = _skip_parens(p, 0)
+        rest = p[inner_end:]
+        if rest.lstrip().startswith("="):
+            for off, g in split_commas_pos(p[1:inner_end - 1]):
+                nm = name_of(g)
+                if nm:
+                    # offset within p: 1 (past the '(') + part offset + name col in g
+                    yield 1 + off + name_col(g, 0), nm
+            return
+    # $P(NAME,…)= / $E(NAME,…)= / $NA(NAME)=  — writes NAME
+    im = RE_SET_INDIR.match(p)
+    if im:
+        yield im.start(1), im.group(1)
+        return
+    # NAME(sub-with-nested-parens)=  or  NAME=
+    m = re.match(rf"({NAME})", p)
+    if not m:
+        return
+    name = m.group(1)
+    k = m.end()
+    if k < len(p) and p[k] == "(":
+        k = _skip_parens(p, k)
+    rest = p[k:]
+    if rest.lstrip().startswith("="):
+        yield m.start(1), name
+
+
 def events_for_code(code: str):
     """Return (col, kind, name) assignment events, sorted by column.
 
@@ -147,25 +207,8 @@ def events_for_code(code: str):
             base = j + off
             if not part:
                 continue
-            # group set  (a,b,c)=  — may appear as any comma-part
-            gm = RE_SET_GROUP.match(part)
-            if gm:
-                for goff, gpart in split_commas_pos(gm.group(1)):
-                    nm = name_of(gpart)
-                    if nm:
-                        ev.append((name_col(gpart, base + gm.start(1) + goff), "SET", nm))
-                continue
-            # $P(NAME,…)= / $E(NAME,…)=  writes NAME (undefined-safe piece assign).
-            # The target name is *inside* the parens, so use its own column —
-            # name_col(part) would return the `$P` position and the write would
-            # miss the later read/write of NAME.
-            im = RE_SET_INDIR.match(part)
-            if im:
-                ev.append((base + im.start(1), "SET", im.group(1)))
-                continue
-            nm = RE_SET_NAME.match(part)
-            if nm:
-                ev.append((name_col(part, base), "SET", nm.group(1)))
+            for rel, nm in set_targets(part):
+                ev.append((base + rel, "SET", nm))
     for m in RE_NEW.finditer(code):
         for off, part in split_commas_pos(m.group(1)):
             nm = name_of(part)
