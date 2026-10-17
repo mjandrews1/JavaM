@@ -8,8 +8,8 @@
 
 | Track | State |
 |-------|--------|
-| Language / corpus | **DONE** — `MjvmNativeScore` **131 / 8 / 0** |
-| mJVM native path | **DONE** at 131/8/0 |
+| Language / corpus | **DONE** — `MjvmNativeScore` **135 / 4 / 0** (4 documented RSM DIVERGENCES) |
+| mJVM native path | **DONE** at 135/4/0 |
 | **v0.4.0** ship | **DONE** — Cdb2Store mesh plane · multi-level `$ORDER` · fleet smoke |
 | **v0.5.0** | **DONE** — whole milestone closed (#97–#102 perf, #119–#123 concurrency audits, #126 Cdb2Store LOCK/TSTART, #128 hardening) |
 | Store backends | SqlStore + MStore + **Cdb2Store** (grouped SETB, locks in PR #127) |
@@ -18,16 +18,15 @@
 ## Priority order (attack next)
 
 ```
-  1  #26              Dafny: close 8 corpus misses (T11/T12/T15/C16/C24)  ← prove
-  2  #25              Dafny: contracts for DO / GOTO / trap               ← prove
-  3  #35 / #36        REPL (JavaM + mJVM)                                 ← UX
-  4  #27              rename leftovers (docs/CI badges)                   ← hygiene
-  5  #34              full VistA under JavaM + mJVM                       ← recurring
-  6  #28              MeshGraph DS libs → stdlib                          ← optional
+  1  #25              Dafny: contracts for DO / GOTO / trap               ← prove
+  2  #35 / #36        REPL (JavaM + mJVM)                                 ← UX
+  3  #27              rename leftovers (docs/CI badges)                   ← hygiene
+  4  #34              full VistA under JavaM + mJVM                       ← recurring
+  5  #28              MeshGraph DS libs → stdlib                          ← optional
 ```
 
 **1.0 gate ACHIEVED (2026-10-17).** Tier A/B/C green on both engines. 0 ENGINE GAPs.
-Next phase: **#26 corpus misses** (M semantics proofs) → #25 Dafny contracts.
+Corpus **135/4/0** (4 documented RSM DIVERGENCES). Next: **#25 Dafny contracts**.
 
 ## v0.4.0 (shipped 2026-10-15)
 
