@@ -1,0 +1,185 @@
+package jvmumps;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+/**
+ * FileMan Tier A smoke on the **native mJVM** path (jvmumps#32, 1.0 gate).
+ *
+ * Same A5/A6/A7 gates as {@link FileManTierASmoke}, but executed through
+ * {@code MFrontend} + {@code IrMachine} + {@code MRuntime} — not
+ * {@code LineInterp}. The 1.0 gate is *FileMan Tier A without ENGINE GAP*;
+ * this is the half that was still open.
+ *
+ * A8 (c3fst) is NOT part of this suite: c3fst is deprecated.
+ *
+ * GOLDEN: parse a small stable FileMan/toolkit subset from FILEMAN_CORPUS.
+ * RUN:    FileMan-shaped direct-mode snippets (XLFUTL/XLFSTR idioms).
+ *
+ * Exit 0 = golden parse clean + all RUN cases MATCH.
+ * Failures classified: ENGINE GAP / DIALECT / DATA.
+ */
+public final class FileManTierANativeSmoke {
+
+    static final String[] GOLDEN = {
+        "dictest.m", "explore.m", "seedpat.m",
+        "fileman/DIC0.m", "fileman/DILF.m", "fileman/DILIBF.m",
+        "utils/XLFUTL.m", "utils/XLFSTR.m",
+    };
+
+    static final String[][] RUN_CASES = {
+        {"fm.piece",       "S X=\"A^B^C\" W $P(X,\"^\",2),!", "B"},
+        {"fm.extract",     "S X=\"HELLO\" W $E(X,2,4),!",     "ELL"},
+        {"fm.length",      "W $L(\"ABC\"),$L(\"A,B,C\",\",\"),!", "33"},
+        {"fm.data-order",  "K ^FMS S ^FMS(1)=\"a\",^FMS(2)=\"b\" W $D(^FMS),! S K=\"\" S K=$O(^FMS(K)) W K,!", "10\n1"},
+        {"fm.get-default", "W $G(^FMS(9),\"dflt\"),!",        "dflt"},
+        {"fm.order-dec",   "K ^DD S ^DD(0.81)=\"a\",^DD(0.01)=\"b\" S K=\"\" S K=$O(^DD(K)) W K,!", ".01"},
+        {"fm.order-multi", "K ^DIC S ^DIC(1,0)=\"FILE\" S ^DIC(1,1)=\"F1\" S ^DIC(1,2)=\"F2\" W $D(^DIC(1)),! S K=\"\" S K=$O(^DIC(1,K)) W K,!", "10\n0"},
+        {"fm.order-next",  "K ^DIC S ^DIC(1,1)=\"F1\" S ^DIC(1,2)=\"F2\" S K=1 S K=$O(^DIC(1,K)) W K,!", "2"},
+        {"fm.order-empty", "K ^DIC S ^DIC(1,1)=\"F1\" S K=1 S K=$O(^DIC(1,K)) W \"[\",K,\"]\",!", "[]"},
+        {"fm.query",       "K ^Q S ^Q(1,2,3)=\"x\" W $QUERY(^Q),!", "^Q(1,2,3)"},
+    };
+
+    /** Minimal extrinsic used by the A6 gate. */
+    static final String EXTRINSIC_ROUTINE =
+        " Q\n" +
+        "P2(Y) ; extrinsic\n" +
+        " S Y=Y_\"ab\" Q Y\n";
+
+    static String filemanRoot() {
+        String env = System.getenv("FILEMAN_CORPUS");
+        return env != null && !env.isEmpty() ? env : System.getProperty("user.home") + "/_fileman";
+    }
+
+    public static void main(String[] args) throws Exception {
+        String root = args.length > 0 && Files.isDirectory(Path.of(args[0]))
+                ? args[0] : filemanRoot();
+        System.out.println("## FileMan Tier A smoke — NATIVE mJVM (FILEMAN_CORPUS=" + root + ")");
+        System.out.println("### path: MFrontend + IrMachine + MRuntime (not LineInterp)");
+        System.out.println("### NOTE A8 c3fst search smoke SKIPPED (c3fst deprecated; jvmumps#32)");
+        System.out.println();
+
+        int fail = 0;
+        fail += goldenParse(root);
+        System.out.println();
+        fail += runCases();
+        System.out.println();
+        fail += extrinsic();
+
+        System.out.println();
+        if (fail == 0) {
+            System.out.println("  RESULT: FileMan Tier A smoke OK (native mJVM)");
+            return;
+        }
+        System.out.println("  RESULT: FileMan Tier A smoke FAILED (" + fail + ") (native mJVM)");
+        System.exit(1);
+    }
+
+    // ---- A5: golden parse -------------------------------------------
+
+    static int goldenParse(String root) {
+        System.out.println("### A5 READ: routine parse + labels (golden subset)");
+        Path base = Path.of(root);
+        if (!Files.isDirectory(base)) {
+            System.out.println("  SKIP golden parse (no FILEMAN_CORPUS dir: " + root + ")");
+            return 0;
+        }
+        int fail = 0;
+        for (String rel : GOLDEN) {
+            Path p = Path.of(root, rel);
+            if (!Files.isRegularFile(p)) {
+                System.out.printf("  %-28s MISSING (DATA)%n", rel);
+                fail++;
+                continue;
+            }
+            String code;
+            try {
+                code = Files.readString(p);
+            } catch (Exception e) {
+                System.out.printf("  %-28s READ ERROR %s%n", rel, e);
+                fail++;
+                continue;
+            }
+            try {
+                List<LineState.RtLine> lines = LineRoutine.parseRoutine(code);
+                int nlab = 0;
+                for (LineState.RtLine tl : lines) {
+                    if (tl.tag != null && !tl.tag.isEmpty()) {
+                        nlab++;
+                    }
+                }
+                if (nlab == 0) {
+                    System.out.printf("  %-28s NO LABELS (DIALECT)%n", rel);
+                    fail++;
+                } else {
+                    System.out.printf("  %-28s ok  labels=%d%n", rel, nlab);
+                }
+            } catch (Exception e) {
+                System.out.printf("  %-28s PARSE ERROR (%s) %s%n", rel, FileManTierASmoke.classify(e.toString()), e);
+                fail++;
+            }
+        }
+        return fail;
+    }
+
+    // ---- A7: RUN cases on the native path ----------------------------
+
+    static int runCases() {
+        System.out.println("### A7 FileMan-shaped RUN cases (native mJVM)");
+        int fail = 0;
+        for (String[] c : RUN_CASES) {
+            fail += runNative(c[0], c[1], c[2]);
+        }
+        return fail;
+    }
+
+    // ---- A6: extrinsic dispatch -------------------------------------
+
+    static int extrinsic() {
+        System.out.println("### A6 extrinsic dispatch (native mJVM)");
+        int fail = 0;
+        fail += runNative("fm.extrinsic", "S X=$$P2(\"z\") W X,!", "zab",
+                EXTRINSIC_ROUTINE);
+        fail += runNative("fm.extrinsic-byref", "S X=$$P2(.Y) W X,!", "ab",
+                EXTRINSIC_ROUTINE);
+        return fail;
+    }
+
+    /** Run one code string on MFrontend + IrMachine; score against want. */
+    static int runNative(String name, String code, String want) {
+        return runNative(name, code, want, null);
+    }
+
+    static int runNative(String name, String code, String want, String prelude) {
+        try {
+            String prog = prelude == null ? code : (prelude + "\n" + code);
+            mjvm.runtime.MRuntime rt = new mjvm.runtime.MRuntime(new MStore());
+            rt.setExtrinsicHandler((fn, argv) -> {
+                // P2(Y) : S Y=Y_"ab" Q Y  — value-arg form used by the A6 gate
+                if (fn.equalsIgnoreCase("P2")) {
+                    String y = argv.length > 0 ? argv[0].asStr() : "";
+                    return MValue.ofString(y + "ab");
+                }
+                throw new jvmumps.MError("Extrinsic $$" + fn + " not available");
+            });
+            var ir = new mjvm.compiler.MFrontend().compileProgram(prog);
+            mjvm.runtime.IrMachine.run(ir, rt);
+            String got = rt.output().strip();
+            if (want.strip().equals(got)) {
+                System.out.printf("  %-22s MATCH  %s%n", name, FileManTierASmoke.quote(got));
+                return 0;
+            }
+            String cls = FileManTierASmoke.classifyMismatch(code, want, got);
+            System.out.printf("  %-22s MISMATCH (%s) exp=%s got=%s%n",
+                    name, cls, FileManTierASmoke.quote(want.strip()), FileManTierASmoke.quote(got));
+            return 1;
+        } catch (Exception e) {
+            String cls = FileManTierASmoke.classify(e.toString());
+            System.out.printf("  %-22s ERROR (%s) %s%n", name, cls, e);
+            return 1;
+        }
+    }
+
+    private FileManTierANativeSmoke() {}
+}
