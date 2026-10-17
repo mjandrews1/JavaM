@@ -1,10 +1,10 @@
 # JavaM critical path
 
-**Last updated:** 2026-10-15 · **Product:** JavaM (JvMumps + mJVM) · repo `mjandrews1/JavaM`  
+**Last updated:** 2026-10-17 · **Product:** JavaM (JvMumps + mJVM) · repo `mjandrews1/JavaM`  
 **Charter:** complete M with **RSM-equivalent scope** (RSM is the *model/oracle*, not a line-by-line port).  
 **Sibling:** `m-semantics/docs/MASTER_CRITICAL_PATH.md` (all projects) · `docs/ROADMAP-0.5.0.md` (current cycle).
 
-## Status snapshot (2026-10-15)
+## Status snapshot (2026-10-17)
 
 | Track | State |
 |-------|--------|
@@ -13,14 +13,14 @@
 | **v0.4.0** ship | **DONE** — Cdb2Store mesh plane · multi-level `$ORDER` · fleet smoke |
 | **v0.5.0** perf review | **IN FLIGHT** — #97–#102 landed; #122/#123/#126 open |
 | Store backends | SqlStore + MStore + **Cdb2Store** (grouped SETB, locks in PR #127) |
-| FileMan Tier A | **OPEN** — gate for **1.0** (issue #32) |
+| FileMan Tier A | **IN FLIGHT** — smoke A5/A6/A7 green on `LineInterp`; byref audit **DONE, 0 defects** (`docs/FILEMAN-BYREF-AUDIT.md`); remaining: same gates on native mJVM + Tier B corpus run (#32) |
 
 ## Priority order (attack next)
 
 ```
   1  PR #127 / #126   Cdb2Store cross-process LOCK + TSTART undo  ← merge + close
   2  #122 / #123      store concurrency audit remainder           ← v0.5.0
-  3  #32              FileMan Tier A                              ← 1.0 gate
+  3  #32              FileMan Tier A on native mJVM + Tier B      ← 1.0 gate
   4  #25 / #26        Dafny DO/GOTO + 8 corpus misses             ← prove
   5  #35 / #36        REPL (JavaM + mJVM)                         ← UX
   6  #27              rename leftovers (docs/CI badges)           ← hygiene
