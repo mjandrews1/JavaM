@@ -48,8 +48,13 @@ RE_NEW = re.compile(rf"(?:^|[ \t:]){DOTS}(?:N|NEW)(?::[^ \t]*)?[ \t]+(.+)$")
 RE_KILL = re.compile(rf"(?:^|[ \t:]){DOTS}(?:K|KILL)(?::[^ \t]*)?[ \t]+(.+)$")
 # R / READ assigns to its target (device input) — `R %XX`, `R REC#255`, `R X:5`
 RE_READ = re.compile(rf"(?:^|[ \t:]){DOTS}(?:R|READ)(?::[^ \t]*)?[ \t]+(.+)$")
-# M / MERGE assigns its left-hand name (possibly subscripted): `M A=B`, `M A(1)=B`
-RE_MERGE = re.compile(rf"(?:^|[ \t:]){DOTS}(?:M|MERGE)(?::[^ \t]*)?[ \t]+(.+)$")
+# M / MERGE assigns its left-hand name (possibly subscripted): `M A=B`, `M A(1)=B`.
+# Capture only the lhs before `=` so a line with several M commands
+# (`M I=DIC N DIC M DIC=I K I`) yields every written name — a trailing
+# `(.+)$` would swallow the rest of the line and hide the later merges.
+RE_MERGE = re.compile(
+    rf"(?:^|[ \t:.]){DOTS}(?:M|MERGE)(?::[^ \t]*)?[ \t]+({NAME}(?:\([^)]*\))?)\s*="
+)
 RE_NAME = re.compile(rf"{NAME}")
 
 
@@ -179,10 +184,9 @@ def events_for_code(code: str):
                 ev.append((name_col(part, m.start(1) + off), "SET", nm))
     # M / MERGE writes its left-hand side: `M A=B`, `M A(1)=B`, `M A=^G`
     for m in RE_MERGE.finditer(code):
-        lhs = m.group(1).split("=", 1)[0]
-        nm = name_of(lhs)
+        nm = name_of(m.group(1))
         if nm:
-            ev.append((name_col(lhs, m.start(1)), "SET", nm))
+            ev.append((m.start(1), "SET", nm))
     # .name inside an arg list (after ( or ,) is a byref pass — callee may write it.
     # Not the dotted-block depth marker (".K DA", ".S X=1"): those have no ( or , before.
     for m in re.finditer(rf"[(,][ \t]*\.({NAME})", code):
