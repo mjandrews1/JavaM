@@ -348,6 +348,8 @@ public final class MFrontend {
         for (int li = 0; li < bodies.size(); li++) {
             List<Ir> out = new ArrayList<>();
             List<int[]> patches = new ArrayList<>();
+            ifJmp0.clear();
+            endJmps.clear();
             String tag = tags.get(li);
             String body = bodies.get(li);
             activeLabels = labels;
@@ -419,9 +421,11 @@ public final class MFrontend {
         for (int li = 0; li < lines.size(); li++) {
             for (int[] pk : patchesPer.get(li)) {
                 int abs = base[pk[2]];
-                Ir oldIr = prog.get(base[li] + pk[1]);
-                if (oldIr.op == Ir.CALL_PC) prog.set(base[li] + pk[1], Ir.callPc(abs));
-                else if (oldIr.op == Ir.JMP) prog.set(base[li] + pk[1], Ir.jmp(abs));
+                int idx = base[li] + pk[1];
+                if (idx < 0 || idx >= prog.size()) continue;
+                Ir oldIr = prog.get(idx);
+                if (oldIr.op == Ir.CALL_PC) prog.set(idx, Ir.callPc(abs));
+                else if (oldIr.op == Ir.JMP) prog.set(idx, Ir.jmp(abs));
             }
         }
         if (prog.isEmpty() || (prog.get(prog.size()-1).op != Ir.RET && prog.get(prog.size()-1).op != Ir.RET_TO)) {
