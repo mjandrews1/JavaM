@@ -11,22 +11,25 @@
 | Language / corpus | **DONE** — `MjvmNativeScore` **131 / 8 / 0** |
 | mJVM native path | **DONE** at 131/8/0 |
 | **v0.4.0** ship | **DONE** — Cdb2Store mesh plane · multi-level `$ORDER` · fleet smoke |
-| **v0.5.0** perf review | **IN FLIGHT** — #97–#102 landed; #122/#123/#126 open |
+| **v0.5.0** | **DONE** — whole milestone closed (#97–#102 perf, #119–#123 concurrency audits, #126 Cdb2Store LOCK/TSTART, #128 hardening) |
 | Store backends | SqlStore + MStore + **Cdb2Store** (grouped SETB, locks in PR #127) |
 | FileMan Tier A | **IN FLIGHT** — smoke A5/A6/A7 green on `LineInterp`; byref audit **DONE, 0 defects** (`docs/FILEMAN-BYREF-AUDIT.md`); remaining: same gates on native mJVM + Tier B corpus run (#32) |
 
 ## Priority order (attack next)
 
 ```
-  1  PR #127 / #126   Cdb2Store cross-process LOCK + TSTART undo  ← merge + close
-  2  #122 / #123      store concurrency audit remainder           ← v0.5.0
-  3  #32              FileMan Tier A on native mJVM + Tier B      ← 1.0 gate
-  4  #25 / #26        Dafny DO/GOTO + 8 corpus misses             ← prove
-  5  #35 / #36        REPL (JavaM + mJVM)                         ← UX
-  6  #27              rename leftovers (docs/CI badges)           ← hygiene
-  7  #34              full VistA under JavaM + mJVM               ← recurring
-  8  #28              MeshGraph DS libs → stdlib                  ← optional
+  1  #32              FileMan Tier A on native mJVM + Tier B      ← 1.0 gate
+
+  2  #25 / #26        Dafny DO/GOTO + 8 corpus misses             ← prove
+  3  #35 / #36        REPL (JavaM + mJVM)                         ← UX
+  4  #27              rename leftovers (docs/CI badges)           ← hygiene
+  5  #34              full VistA under JavaM + mJVM               ← recurring
+  6  #28              MeshGraph DS libs → stdlib                  ← optional
 ```
+
+**Next phase = 1.0 gate (#32).** Byref audit half is done (0 defects, `docs/FILEMAN-BYREF-AUDIT.md`).
+Remaining: run FileMan Tier A on **native mJVM**, then Tier B corpus run, classify
+ENGINE GAP vs dialect vs data. **1.0 = FileMan Tier A without ENGINE GAP.**
 
 ## v0.4.0 (shipped 2026-10-15)
 
