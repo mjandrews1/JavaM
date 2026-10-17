@@ -13,6 +13,7 @@ public final class Ir {
     public static final int PUSH = 1;       // PUSH slot|const
     public static final int LOAD = 2;       // LOAD name → stack
     public static final int STORE = 3;      // STORE name ← stack
+    public static final int BIND = 33;      // formal bind: name ← stack, or UNDEF if empty
     public static final int ADD = 10;
     public static final int SUB = 11;
     public static final int MUL = 12;
@@ -26,6 +27,7 @@ public final class Ir {
     public static final int JMP0 = 31;      // pop, jump if falsey
     public static final int CALL = 40;      // CALL name argc (M3 invokedynamic)
     public static final int RET = 50;
+    public static final int RET_VALUE = 51;   // Q expr: pop → extrinsicValue, then RET
     // M5 devices
     public static final int OPEN = 60;
     public static final int CLOSE = 61;
@@ -84,6 +86,12 @@ public final class Ir {
 
     public static Ir store(String n) {
         return new Ir(STORE, n, null, 0, 0);
+    }
+
+    /** Formal binding at a call target. On a top-down run the value stack is
+     *  empty and the formal is simply undefined — which is what M does. */
+    public static Ir bindFormal(String n) {
+        return new Ir(BIND, n, null, 0, 0);
     }
 
     public static Ir bin(int op) {
@@ -170,6 +178,11 @@ public final class Ir {
 
     public static Ir ret() {
         return new Ir(RET, null, null, 0, 0);
+    }
+
+    /** {@code Q expr} — capture the expression as the extrinsic return value. */
+    public static Ir retVal() {
+        return new Ir(RET_VALUE, null, null, 0, 0);
     }
 
     public static Ir newName(String n) {

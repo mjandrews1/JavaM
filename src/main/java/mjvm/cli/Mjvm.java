@@ -320,7 +320,8 @@ public final class Mjvm {
     }
 
     static void runCode(MRuntime rt, String code, boolean useClass) throws Exception {
-        List<Ir> prog = new MFrontend().compileLine(code);
+        MFrontend fe = new MFrontend();
+        List<Ir> prog = code.indexOf('\n') >= 0 ? fe.compileProgram(code) : fe.compileLine(code);
         if (useClass) {
             String cn = "MjvmGen" + System.nanoTime();
             Path dir = Path.of(System.getProperty("java.io.tmpdir"), "mjvm-classes");
@@ -330,7 +331,7 @@ public final class Mjvm {
                             Mjvm.class.getClassLoader()));
             ((Runnable) cl.getConstructor(MRuntime.class).newInstance(rt)).run();
         } else {
-            IrMachine.run(prog, rt);
+            IrMachine.run(prog, rt, fe.lastTags());
         }
     }
 }

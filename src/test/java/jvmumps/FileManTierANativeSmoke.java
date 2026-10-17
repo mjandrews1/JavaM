@@ -54,10 +54,7 @@ public final class FileManTierANativeSmoke {
      * the build; a case that starts passing is reported so it can be
      * removed from the register.
      */
-    static final java.util.Set<String> KNOWN_GAPS = java.util.Set.of(
-            "fm.extrinsic",        // GAP-2 $$ after tagged-routine prelude
-            "fm.extrinsic-byref"   // GAP-2
-    );
+    static final java.util.Set<String> KNOWN_GAPS = java.util.Set.of();
 
     static String filemanRoot() {
         String env = System.getenv("FILEMAN_CORPUS");
@@ -174,21 +171,27 @@ public final class FileManTierANativeSmoke {
         return runNative(name, code, want, null);
     }
 
-    /** @return {fail, knownGap, healed} */
+    /**
+     * {@code prelude} is a tagged routine to LINK; {@code code} is then run as
+     * a separate statement against the linked routine. This is the ZLINK
+     * shape {@code LineInterp} uses — concatenating them into one program is
+     * not M, because a routine's {@code Q} ends the top-down run.
+     *
+     * @return {fail, knownGap, healed}
+     */
     static int[] runNative(String name, String code, String want, String prelude) {
         try {
-            String prog = prelude == null ? code : (prelude + "\n" + code);
             mjvm.runtime.MRuntime rt = new mjvm.runtime.MRuntime(new MStore());
-            rt.setExtrinsicHandler((fn, argv) -> {
-                // P2(Y) : S Y=Y_"ab" Q Y  — value-arg form used by the A6 gate
-                if (fn.equalsIgnoreCase("P2")) {
-                    String y = argv.length > 0 ? argv[0].asStr() : "";
-                    return MValue.ofString(y + "ab");
-                }
-                throw new jvmumps.MError("Extrinsic $$" + fn + " not available");
-            });
-            var ir = new mjvm.compiler.MFrontend().compileProgram(prog);
-            mjvm.runtime.IrMachine.run(ir, rt);
+            mjvm.compiler.MFrontend fe = new mjvm.compiler.MFrontend();
+            if (prelude != null) {
+                // Phase 1 — link the routine (tags stay callable).
+                var irRoutine = fe.compileProgram(prelude);
+                mjvm.runtime.IrMachine.run(irRoutine, rt, fe.lastTags());
+                rt.reset();
+            }
+            // Phase 2 — run the statement against the linked routine.
+            var ir = fe.compileProgram(code);
+            mjvm.runtime.IrMachine.run(ir, rt, fe.lastTags());
             String got = rt.output().strip();
             if (want.strip().equals(got)) {
                 if (KNOWN_GAPS.contains(name)) {

@@ -299,6 +299,30 @@ public final class MRuntime {
     }
 
     /** Extrinsic $$fn(args) — run via LineInterp-free: use stored program labels. */
+    /** Return value of a {@code Q expr} inside an extrinsic (GAP-2). */
+    private volatile jvmumps.MValue extrinsicValue = jvmumps.MValue.EMPTY;
+    /** Linked routine (ZLINK semantics): tags stay callable after a run. */
+    private java.util.List<mjvm.ir.Ir> linkedProg;
+    private java.util.Map<String, Integer> linkedTags;
+
+    public void link(java.util.List<mjvm.ir.Ir> prog, java.util.Map<String, Integer> tags) {
+        this.linkedProg = prog;
+        this.linkedTags = tags;
+    }
+
+    public java.util.List<mjvm.ir.Ir> linkedProg() { return linkedProg; }
+    public java.util.Map<String, Integer> linkedTags() { return linkedTags; }
+
+    public void setExtrinsicValue(jvmumps.MValue v) {
+        this.extrinsicValue = v == null ? jvmumps.MValue.EMPTY : v;
+    }
+
+    public jvmumps.MValue takeExtrinsicValue() {
+        jvmumps.MValue v = extrinsicValue;
+        extrinsicValue = jvmumps.MValue.EMPTY;
+        return v;
+    }
+
     public jvmumps.MValue callExtrinsic(String name, jvmumps.MValue[] argv) {
         if (name != null && name.equalsIgnoreCase("PEMDAS")) {
             java.util.List<jvmumps.MValue> args = new java.util.ArrayList<>();
@@ -307,7 +331,15 @@ public final class MRuntime {
             }
             return jvmumps.PemdasEval.call(args);
         }
-        // delegate to MFrontend+IrMachine on a synthetic DO form if we have a routine
+        // Linked routine first (ZLINK semantics): $$tag resolves against the
+        // routine loaded by the last compile/run. Fall back to the handler.
+        if (linkedTags != null && linkedProg != null) {
+            Integer pc = linkedTags.get(name.toUpperCase());
+            if (pc != null) {
+                jvmumps.MValue[] pass = argv == null ? new jvmumps.MValue[0] : argv;
+                return mjvm.runtime.IrMachine.runExtrinsic(linkedProg, this, pc, pass);
+            }
+        }
         if (extrinsicHandler != null) return extrinsicHandler.call(name, argv);
         throw new jvmumps.MError("Extrinsic $$" + name + " not available");
     }
