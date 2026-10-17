@@ -230,10 +230,13 @@ def events_for_code(code: str):
         nm = name_of(m.group(1))
         if nm:
             ev.append((m.start(1), "SET", nm))
-    # .name inside an arg list (after ( or ,) is a byref pass — callee may write it.
+    # .name inside an arg list (after ( or ,) is a byref pass. It is a *potential*
+    # write — only a real write if the callee assigns. Marked BYREF so
+    # ever_written() can resolve before counting it; occs_of maps it to WRITE
+    # for read_before_write (conservative: the callee *may* write).
     # Not the dotted-block depth marker (".K DA", ".S X=1"): those have no ( or , before.
     for m in re.finditer(rf"[(,][ \t]*\.({NAME})", code):
-        ev.append((m.start(1), "SET", m.group(1)))
+        ev.append((m.start(1), "BYREF", m.group(1)))
     ev.sort(key=lambda e: e[0])
     return ev
 
@@ -263,7 +266,8 @@ def call_col(line: str, target: str, src: str):
 
 # ---- callee-side read-before-write -----------------------------------
 
-RE_WORD = re.compile(rf"{NAME}")
+# Word boundary matters: `$P(` is the PIECE intrinsic, not a use of variable P.
+RE_WORD = re.compile(rf"(?<![A-Za-z0-9%$]){NAME}")
 # name used as an argument to a defined-ness / undefined-safe intrinsic
 # $G/$D/$O/$ORDER/$NA/$NAME/$Q/$QUERY all tolerate an undefined target.
 RE_GUARDED = re.compile(
@@ -308,17 +312,21 @@ def do_target_cols(code: str):
 
 
 def is_cmd_name(code: str, c: int, end: int) -> bool:
-    """True when the single letter at c looks like a command name, not a var.
+    """True when the name at c looks like a command/label name, not a var.
 
     Command names are followed by whitespace plus an argument/next-command
     (`S F=1`, `K DTOUT`, `N E1,E2`, `S (D,F,L,M)=""`). A trailing `=` / operator
-    means a variable use (`Y=""`), and a bare end-of-line is left alone.
+    means a variable use (`Y=""`).
+
+    Bare end-of-line: at a command slot it is a label/command (`DO ; comment`
+    strips to `DO `, and `X` alone is a label) — skip it. In an argument
+    position it is a trailing variable read (`W X`) — keep it.
     """
     j = end
     while j < len(code) and code[j] in " \t":
         j += 1
     if j >= len(code):
-        return False
+        return is_cmd_pos(code, c)
     nxt = code[j]
     # `S (D,F,L,M)=""` — command + group set, not a var with subscripts
     if nxt == "(" and is_cmd_pos(code, c):
@@ -394,9 +402,10 @@ def occs_of(code: str, name: str):
     guard earlier on the line shields later reads on that line (FileMan idiom
     `I $G(X)]"" … S Y=X`).
     """
-    set_cols = {c for (c, k, n) in events_for_code(code)
-                if n.upper() == name.upper() and k == "SET"}
-    undef_cols = {c for (c, k, n) in events_for_code(code)
+    evs = events_for_code(code)
+    set_cols = {c for (c, k, n) in evs
+                if n.upper() == name.upper() and k in ("SET", "BYREF")}
+    undef_cols = {c for (c, k, n) in evs
                   if n.upper() == name.upper() and k in ("NEW", "KILL")}
     spans = string_spans(code)
     tgts = do_target_cols(code)
@@ -421,9 +430,9 @@ def occs_of(code: str, name: str):
         # DO/GOTO/$$ target names are not variable uses (D DA(RIENS,.DA))
         if c in tgts:
             continue
-        # single-letter command words at a command slot are not variable uses
-        if len(m.group(0)) == 1 and m.group(0).upper() in CMD_ONE \
-                and is_cmd_name(code, c, m.end()):
+        # command words at a command slot are not variable uses — including
+        # multi-letter ones (`DO ; GET FILE ATTR` is a label, not a read of DO)
+        if m.group(0).upper() in CMD_WORDS and is_cmd_name(code, c, m.end()):
             continue
         if RE_GUARDED.search(code[:c]) or (guarded_at is not None and c > guarded_at):
             out.append((c, "READ_SAFE"))
@@ -515,15 +524,38 @@ def guarded_before_write(body, name):
     return True  # never used at all in body — callee ignores it
 
 
-def ever_written(body, name):
-    """True when the callee assigns `name` anywhere in its body.
+def ever_written(body, name, root=None, db=None, cache=None, self_path=None):
+    """True when the callee *assigns* `name` anywhere in its body.
 
-    Used to split shared-state into read-only consumers vs mutators.
+    A byref pass (`D FOO(.X)`) is only a write when `FOO` itself assigns `X` —
+    forwarding to a read-only callee must not flip the call to read-write.
+    Without a resolver a byref pass is conservatively treated as a write.
     """
     for n, text in body:
         code = strip_comment(text)
-        for _c, kind in occs_of(code, name):
-            if kind == "WRITE":
+        for _c, kind, nm in events_for_code(code):
+            if nm.upper() != name.upper():
+                continue
+            if kind == "SET":
+                return True
+            if kind == "BYREF" and root is not None:
+                if byref_assigns([(n, text)], name, root, db, cache, self_path):
+                    return True
+    return False
+
+
+def byref_assigns(body, name, root, db, cache, self_path):
+    """True when a `.name` byref pass on one of these lines reaches a callee
+    (depth-capped) that assigns `name`."""
+    for n, text in body:
+        code = strip_comment(text)
+        has_byref = any(k == "BYREF" and nm.upper() == name.upper()
+                        for _c, k, nm in events_for_code(code))
+        if not has_byref:
+            continue
+        for tag, rtn in do_targets_in([(n, text)]):
+            sub = resolve_body(root, db, rtn, tag, cache, self_path)
+            if sub and writes_name(sub, name, root, db, cache, self_path):
                 return True
     return False
 
@@ -641,12 +673,18 @@ def writes_name(body, name, root, db, cache, self_path=None, depth=0, seen=None)
         return False
     for n, text in body:
         code = strip_comment(text)
-        for _col, kind in occs_of(code, name):
+        evs = events_for_code(code)
+        set_cols = {c for c, k, nm in evs if nm.upper() == name.upper() and k == "SET"}
+        for col, kind in occs_of(code, name):
             if kind == "WRITE":
-                return True
+                # real assignment wins; a BYREF pass falls through to the
+                # DO-target follow below
+                if col in set_cols:
+                    return True
+                continue
             if kind == "READ_RAW":
                 return False
-        # no use of name on this line — follow DO targets it makes
+        # no definitive use of name on this line — follow DO targets it makes
         for tag, rtn in do_targets_in([(n, text)]):
             sig = (rtn, tag, name.upper())
             if sig in seen:
@@ -673,7 +711,7 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
     if formal.upper() in SHARED_STATE:
         # Split by whether the callee also mutates the shared state:
         # read-only consumer vs in/out mutator.
-        mutates = ever_written(body, formal)
+        mutates = ever_written(body, formal, root, db, label_cache, self_path)
         kind = "shared-state-rw" if mutates else "shared-state-ro"
         note = "mutates" if mutates else "read-only"
         row["rbw"] = {"line": line,
@@ -688,7 +726,7 @@ def classify_rbw(row, body, formal, root, db, label_cache, rbw_rows, self_path=N
     # Only reached when there *is* a read-before-write, so safe (write-first)
     # arrays stay in "callee safe".
     if used_as_array(body, formal):
-        mutates = ever_written(body, formal)
+        mutates = ever_written(body, formal, root, db, label_cache, self_path)
         kind = "array-in-rw" if mutates else "array-in-ro"
         note = "mutates" if mutates else "read-only"
         row["rbw"] = {"line": line,
@@ -775,7 +813,9 @@ def analyze(db: sqlite3.Connection, root: Path, limit: int):
                 last = ek
             else:
                 break
-        if last == "SET" or bname.upper() in bound:
+        # BYREF is a potential set on the caller side too — an earlier
+        # `D FOO(.X)` may have filled X.
+        if last in ("SET", "BYREF") or bname.upper() in bound:
             continue
         # A nested DO before the call may set the actual (FLDVAL sets DIEV0
         # before AUXVAL reads it). Direct SET/NEW/KILL scanning cannot see
@@ -822,8 +862,8 @@ def analyze(db: sqlite3.Connection, root: Path, limit: int):
                     # Does the callee assign the formal at all? Splits the
                     # unset-at-call population: output-only / in-out (writes)
                     # vs a read of something the caller never set (read-only).
-                    row["callee_writes"] = ever_written(body, formal)
                     callee_path = find_path(db, rtn) if rtn else path
+                    row["callee_writes"] = ever_written(body, formal, root, db, label_cache, callee_path)
                     classify_rbw(row, body, formal, root, db, label_cache, rbw_rows,
                                  self_path=callee_path)
         rows.append(row)
