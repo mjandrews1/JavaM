@@ -18,15 +18,15 @@
 ## Priority order (attack next)
 
 ```
-  1  #25              Dafny: contracts for DO / GOTO / trap               ← prove
-  2  #35 / #36        REPL (JavaM + mJVM)                                 ← UX
-  3  #27              rename leftovers (docs/CI badges)                   ← hygiene
-  4  #34              full VistA under JavaM + mJVM                       ← recurring
-  5  #28              MeshGraph DS libs → stdlib                          ← optional
+  1  #35 / #36        REPL (JavaM + mJVM)                                 ← UX
+  2  #27              rename leftovers (docs/CI badges)                   ← hygiene
+  3  #34              full VistA under JavaM + mJVM                       ← recurring
+  4  #28              MeshGraph DS libs → stdlib                          ← optional
 ```
 
 **1.0 gate ACHIEVED (2026-10-17).** Tier A/B/C green on both engines. 0 ENGINE GAPs.
-Corpus **135/4/0** (4 documented RSM DIVERGENCES). Next: **#25 Dafny contracts**.
+Corpus **135/4/0** (4 documented RSM DIVERGENCES). Dafny contracts (#25) and corpus misses (#26) done.
+Next: **#35/#36 REPL**.
 
 ## v0.4.0 (shipped 2026-10-15)
 
