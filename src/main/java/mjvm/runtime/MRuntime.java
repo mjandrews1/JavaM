@@ -76,12 +76,13 @@ public final class MRuntime {
 
     private boolean trapFiring;
 
-    /** M11: run $ETRAP/$ZTRAP once for a command error. */
-    public void fireTrap() {
-        if (trapFiring) return;
+    /** M11: run $ETRAP/$ZTRAP once for a command error.
+     *  Returns true if a trap was fired (error handled), false if no trap set. */
+    public boolean fireTrap() {
+        if (trapFiring) return true;
         String trap = exprEval.etrap;
         if (trap.isEmpty()) trap = exprEval.ztrap;
-        if (trap.isEmpty()) return;
+        if (trap.isEmpty()) return false;
         trapFiring = true;
         try {
             var prog = new mjvm.compiler.MFrontend().compileLine(trap);
@@ -90,6 +91,7 @@ public final class MRuntime {
         } finally {
             trapFiring = false;
         }
+        return true;
     }
 
     /** SET $ETRAP / $ECODE / $ZTRAP / $X / $Y. */
@@ -341,7 +343,7 @@ public final class MRuntime {
             }
         }
         if (extrinsicHandler != null) return extrinsicHandler.call(name, argv);
-        throw new jvmumps.MError("Extrinsic $$" + name + " not available");
+        throw new jvmumps.MError("No such label '" + name + "'");
     }
 
     public interface ExtrinsicHandler {
@@ -359,7 +361,7 @@ public final class MRuntime {
             resolver.call(name, argc, this);
             return;
         }
-        throw new jvmumps.MError("mJVM: no resolver for " + name);
+        throw new jvmumps.MError("No such label '" + name + "'");
     }
 
     /** Truthiness: ISO / ExprEval contract (shared with JvMumps). */

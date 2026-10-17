@@ -121,23 +121,51 @@ public final class MFrontend {
                     continue;
                 }
                 // M3: DO/GOTO tag [^rtn] [ (args) ] — name is a call-site, not a load
+                // postconditional first: D:COND [TAG] — run only if COND
+                boolean hasPostcond = false;
+                int postJ0 = -1;
+                if (i < line.length() && line.charAt(i) == ':') {
+                    i++;
+                    int cs = i;
+                    i = MFrontendUtil.scanExprEnd(line, i, " ");
+                    String cond = line.substring(cs, i).trim();
+                    out.add(Ir.evalExpr(cond));
+                    postJ0 = out.size();
+                    out.add(Ir.jmp0(-1)); // false → skip call
+                    hasPostcond = true;
+                }
                 i = MFrontendUtil.skipWs(line, i);
                 int tst = i;
                 while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
                         || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
                 String target = line.substring(tst, i);
+                // don't treat a known command as a DO target (D:1 W 1 → argless DO + W)
+                if (!target.isEmpty() && MFrontendUtil.isKnownCmd(target) && target.length() <= 2
+                        && (i >= line.length() || line.charAt(i) == ' ' || line.charAt(i) == ':')) {
+                    i = tst; // rewind — this is a new command, not a DO target
+                    target = "";
+                }
                 if (target.isEmpty()) {
-                    // expression form (string / $$fn) — evaluate one arg
-                    List<Ir> tmp = new ArrayList<>();
-                    i = compileExpr(line, i, tmp, " ");
-                    out.addAll(tmp);
-                    if (cmd.equals("J") || cmd.equals("JOB")) {
-                        out.add(Ir.job());
+                    // at a known command? argless DO — emit call and let main loop continue
+                    if (i < line.length() && Character.isLetter(line.charAt(i))
+                            && MFrontendUtil.isKnownCmd(String.valueOf(line.charAt(i)))) {
+                        out.add(Ir.call(cmd, 0));
                     } else {
-                        out.add(Ir.call(cmd, 1));
+                        // expression form (string / $$fn) — evaluate one arg
+                        List<Ir> tmp = new ArrayList<>();
+                        i = compileExpr(line, i, tmp, " ");
+                        out.addAll(tmp);
+                        if (cmd.equals("J") || cmd.equals("JOB")) {
+                            out.add(Ir.job());
+                        } else {
+                            out.add(Ir.call(cmd, 1));
+                        }
                     }
                 } else {
                     out.add(Ir.call(target, 0));
+                }
+                if (hasPostcond) {
+                    out.set(postJ0, Ir.jmp0(out.size()));
                 }
             } else if (cmd.equals("TSTART")) {
                 out.add(Ir.tstart());

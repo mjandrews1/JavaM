@@ -95,7 +95,7 @@ public final class IrMachine {
                     try {
                         vals[sp++] = rt.getVar(op.name);
                     } catch (jvmumps.MError e) {
-                        rt.fireTrap();
+                        if (!rt.fireTrap()) throw e; // no trap set — propagate like JavaM
                         vals[sp++] = jvmumps.MValue.EMPTY;
                     }
                 }
