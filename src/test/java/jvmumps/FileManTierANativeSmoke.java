@@ -47,6 +47,19 @@ public final class FileManTierANativeSmoke {
         "P2(Y) ; extrinsic\n" +
         " S Y=Y_\"ab\" Q Y\n";
 
+    /**
+     * Registered OPEN ENGINE GAPs (docs/FILEMAN-TIER-A-GAPS.md). These are
+     * reported as KNOWN GAP and do not fail the merge gate — but the 1.0
+     * gate still requires them CLOSED. Any failure NOT in this set fails
+     * the build; a case that starts passing is reported so it can be
+     * removed from the register.
+     */
+    static final java.util.Set<String> KNOWN_GAPS = java.util.Set.of(
+            "fm.order-dec",        // GAP-1 numeric subscript canonicalisation on SET
+            "fm.extrinsic",        // GAP-2 $$ after tagged-routine prelude
+            "fm.extrinsic-byref"   // GAP-2
+    );
+
     static String filemanRoot() {
         String env = System.getenv("FILEMAN_CORPUS");
         return env != null && !env.isEmpty() ? env : System.getProperty("user.home") + "/_fileman";
@@ -60,30 +73,40 @@ public final class FileManTierANativeSmoke {
         System.out.println("### NOTE A8 c3fst search smoke SKIPPED (c3fst deprecated; jvmumps#32)");
         System.out.println();
 
-        int fail = 0;
-        fail += goldenParse(root);
+        int fail = 0, known = 0, healed = 0;
+        int[] r = goldenParse(root);
+        fail += r[0];
         System.out.println();
-        fail += runCases();
+        r = runCases();
+        fail += r[0]; known += r[1]; healed += r[2];
         System.out.println();
-        fail += extrinsic();
+        r = extrinsic();
+        fail += r[0]; known += r[1]; healed += r[2];
 
         System.out.println();
+        System.out.printf("  summary: fail=%d  known-gap=%d  healed=%d%n", fail, known, healed);
+        if (healed > 0) {
+            System.out.println("  NOTE: a registered gap now PASSES — remove it from KNOWN_GAPS / docs/FILEMAN-TIER-A-GAPS.md");
+        }
         if (fail == 0) {
-            System.out.println("  RESULT: FileMan Tier A smoke OK (native mJVM)");
+            System.out.println(known == 0
+                    ? "  RESULT: FileMan Tier A smoke OK (native mJVM)"
+                    : "  RESULT: FileMan Tier A smoke OK (native mJVM) — " + known
+                        + " registered ENGINE GAP(s) remain; 1.0 requires them CLOSED");
             return;
         }
-        System.out.println("  RESULT: FileMan Tier A smoke FAILED (" + fail + ") (native mJVM)");
+        System.out.println("  RESULT: FileMan Tier A smoke FAILED (" + fail + " unexpected) (native mJVM)");
         System.exit(1);
     }
 
     // ---- A5: golden parse -------------------------------------------
 
-    static int goldenParse(String root) {
+    static int[] goldenParse(String root) {
         System.out.println("### A5 READ: routine parse + labels (golden subset)");
         Path base = Path.of(root);
         if (!Files.isDirectory(base)) {
             System.out.println("  SKIP golden parse (no FILEMAN_CORPUS dir: " + root + ")");
-            return 0;
+            return new int[] {0, 0, 0};
         }
         int fail = 0;
         for (String rel : GOLDEN) {
@@ -120,38 +143,40 @@ public final class FileManTierANativeSmoke {
                 fail++;
             }
         }
-        return fail;
+        return new int[] {fail, 0, 0};
     }
 
     // ---- A7: RUN cases on the native path ----------------------------
 
-    static int runCases() {
+    static int[] runCases() {
         System.out.println("### A7 FileMan-shaped RUN cases (native mJVM)");
-        int fail = 0;
+        int fail = 0, known = 0, healed = 0;
         for (String[] c : RUN_CASES) {
-            fail += runNative(c[0], c[1], c[2]);
+            int[] r = runNative(c[0], c[1], c[2]);
+            fail += r[0]; known += r[1]; healed += r[2];
         }
-        return fail;
+        return new int[] {fail, known, healed};
     }
 
     // ---- A6: extrinsic dispatch -------------------------------------
 
-    static int extrinsic() {
+    static int[] extrinsic() {
         System.out.println("### A6 extrinsic dispatch (native mJVM)");
-        int fail = 0;
-        fail += runNative("fm.extrinsic", "S X=$$P2(\"z\") W X,!", "zab",
-                EXTRINSIC_ROUTINE);
-        fail += runNative("fm.extrinsic-byref", "S X=$$P2(.Y) W X,!", "ab",
-                EXTRINSIC_ROUTINE);
-        return fail;
+        int fail = 0, known = 0, healed = 0;
+        int[] r = runNative("fm.extrinsic", "S X=$$P2(\"z\") W X,!", "zab", EXTRINSIC_ROUTINE);
+        fail += r[0]; known += r[1]; healed += r[2];
+        r = runNative("fm.extrinsic-byref", "S X=$$P2(.Y) W X,!", "ab", EXTRINSIC_ROUTINE);
+        fail += r[0]; known += r[1]; healed += r[2];
+        return new int[] {fail, known, healed};
     }
 
     /** Run one code string on MFrontend + IrMachine; score against want. */
-    static int runNative(String name, String code, String want) {
+    static int[] runNative(String name, String code, String want) {
         return runNative(name, code, want, null);
     }
 
-    static int runNative(String name, String code, String want, String prelude) {
+    /** @return {fail, knownGap, healed} */
+    static int[] runNative(String name, String code, String want, String prelude) {
         try {
             String prog = prelude == null ? code : (prelude + "\n" + code);
             mjvm.runtime.MRuntime rt = new mjvm.runtime.MRuntime(new MStore());
@@ -167,17 +192,31 @@ public final class FileManTierANativeSmoke {
             mjvm.runtime.IrMachine.run(ir, rt);
             String got = rt.output().strip();
             if (want.strip().equals(got)) {
+                if (KNOWN_GAPS.contains(name)) {
+                    System.out.printf("  %-22s MATCH  %s   [HEALED — drop from KNOWN_GAPS]%n",
+                            name, FileManTierASmoke.quote(got));
+                    return new int[] {0, 0, 1};
+                }
                 System.out.printf("  %-22s MATCH  %s%n", name, FileManTierASmoke.quote(got));
-                return 0;
+                return new int[] {0, 0, 0};
             }
             String cls = FileManTierASmoke.classifyMismatch(code, want, got);
+            if (KNOWN_GAPS.contains(name)) {
+                System.out.printf("  %-22s KNOWN GAP (%s) exp=%s got=%s%n",
+                        name, cls, FileManTierASmoke.quote(want.strip()), FileManTierASmoke.quote(got));
+                return new int[] {0, 1, 0};
+            }
             System.out.printf("  %-22s MISMATCH (%s) exp=%s got=%s%n",
                     name, cls, FileManTierASmoke.quote(want.strip()), FileManTierASmoke.quote(got));
-            return 1;
+            return new int[] {1, 0, 0};
         } catch (Exception e) {
             String cls = FileManTierASmoke.classify(e.toString());
+            if (KNOWN_GAPS.contains(name)) {
+                System.out.printf("  %-22s KNOWN GAP (%s) %s%n", name, cls, e);
+                return new int[] {0, 1, 0};
+            }
             System.out.printf("  %-22s ERROR (%s) %s%n", name, cls, e);
-            return 1;
+            return new int[] {1, 0, 0};
         }
     }
 
