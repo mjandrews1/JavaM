@@ -10,7 +10,7 @@ Status key: **OPEN** · FIXED · WONTFIX (with reason).
 
 ---
 
-## GAP-1 · numeric subscript canonicalisation on SET — **OPEN**
+## GAP-1 · numeric subscript canonicalisation on SET — **FIXED**
 
 **Class:** ENGINE GAP · **Engine:** native mJVM · **Gate:** A7 (`fm.order-dec`)
 
@@ -33,7 +33,18 @@ depends on the canonical form.
 **parity gap** between the two engines, which is exactly what the corpus
 oracle is for.
 
-**Repro:** `tools/tier_a_gap_probe.sh` · `FileManTierANativeSmoke` case `fm.order-dec`.
+**Fix:** `MRuntime.subOf` now canonicalises unquoted numeric subscripts via
+`ExprEval.mstr` — the same rule `LineRefs.subToken` uses on the `LineInterp`
+side. Quoted subscripts (`^DD("0.01")`) keep their literal form.
+
+```java
+S ^DD(0.01)="b" … $O(^DD(K)) W K,!   →  .01     ✓
+S ^DD(1.10)="c" … $O(^DD(K)) W K,!   →  1.1     ✓
+W 0.01,!                             →  .01     ✓
+S ^DD(".01")="b" …                   →  .01     ✓ (string preserved)
+```
+
+**Repro:** `tools/tier_a_gap_probe.sh` · `FileManTierANativeSmoke` case `fm.order-dec` (now HEALED).
 
 ---
 
@@ -70,13 +81,13 @@ the standard FileMan extrinsic idiom. Without this, A6 cannot pass.
 | gate | state |
 |---|---|
 | A5 golden parse (8 routines) | **PASS** 8/8 |
-| A7 FileMan-shaped RUN (10 cases) | **9/10** — `fm.order-dec` = GAP-1 |
+| A7 FileMan-shaped RUN (10 cases) | **10/10 PASS** (GAP-1 fixed) |
 | A6 extrinsic (2 cases) | **0/2** — GAP-2 |
 | A8 c3fst search | **SKIPPED** (c3fst deprecated) |
 
 `LineInterp` (JavaM) is green on the same gates: A5 8/8 · A7 10/10 · A6 2/2.
 
-**1.0 requires A5 + A6 + A7 green on BOTH engines.**
+**1.0 requires A5 + A6 + A7 green on BOTH engines.** Remaining: **GAP-2** (A6 ×2).
 
 ---
 
