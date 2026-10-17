@@ -53,11 +53,37 @@ public final class IrMachine {
     }
 
     public static void run(List<Ir> prog, MRuntime rt) {
-        int[] stack = new int[0]; // unused — value stack below
+        run(prog, rt, 0, null);
+    }
+
+    /** Run and link the tag table so later `$$tag` calls resolve (GAP-2).
+     *  A later single-line run must not clobber an already-linked routine. */
+    public static void run(List<Ir> prog, MRuntime rt, java.util.Map<String, Integer> tags) {
+        if (tags != null && !tags.isEmpty()) {
+            rt.link(prog, tags);
+        }
+        run(prog, rt, 0, null);
+    }
+
+    /**
+     * Run {@code prog} from {@code startPc}. When {@code argv} is non-null the
+     * values are pushed first (they bind the tag's formals) and the first
+     * {@code RET}/{@code RET_VALUE} returns to the caller — the run is an
+     * extrinsic invocation (GAP-2).
+     */
+    public static jvmumps.MValue runExtrinsic(List<Ir> prog, MRuntime rt, int startPc, MValue[] args) {
+        return run(prog, rt, startPc, args);
+    }
+
+    private static jvmumps.MValue run(List<Ir> prog, MRuntime rt, int startPc, MValue[] args) {
         MValue[] vals = new MValue[256];
         int sp = 0;
-        int pc = 0;
+        int pc = startPc;
         java.util.ArrayDeque<Integer> rets = new java.util.ArrayDeque<>();
+        final boolean extrinsic = args != null;
+        if (extrinsic) {
+            for (MValue a : args) vals[sp++] = a == null ? MValue.EMPTY : a;
+        }
         while (pc < prog.size() && !rt.isQuit()) {
             Ir op = prog.get(pc);
             switch (op.op) {
@@ -72,6 +98,12 @@ public final class IrMachine {
                         rt.fireTrap();
                         vals[sp++] = jvmumps.MValue.EMPTY;
                     }
+                }
+                case Ir.BIND -> {
+                    // Formal at a call target. Empty stack = top-down run of the
+                    // routine, or fewer args than formals — M leaves it undefined.
+                    MValue v = sp > 0 ? vals[--sp] : jvmumps.MValue.EMPTY;
+                    rt.setVar(op.name, v);
                 }
                 case Ir.STORE -> {
                     MValue v = vals[--sp];
@@ -218,21 +250,32 @@ public final class IrMachine {
                     continue;
                 }
                 case Ir.RET_TO -> {
-                    if (rets.isEmpty()) return;
+                    if (rets.isEmpty()) return extrinsic ? rt.takeExtrinsicValue() : null;
                     pc = rets.pop();
                     continue;
+                }
+                case Ir.RET_VALUE -> {
+                    // Q expr — the value becomes the extrinsic return value
+                    if (sp > 0) rt.setExtrinsicValue(vals[--sp]);
+                    if (!rets.isEmpty()) {
+                        pc = rets.pop();
+                        continue;
+                    }
+                    return extrinsic ? rt.takeExtrinsicValue() : null;
                 }
                 case Ir.RET -> {
                     if (!rets.isEmpty()) {
                         pc = rets.pop();
                         continue;
                     }
-                    return;
+                    return extrinsic ? rt.takeExtrinsicValue() : null;
                 }
                 default -> throw new jvmumps.MError("bad IR op " + op.op);
             }
             if (op.op != Ir.JMP && op.op != Ir.JMP0) pc++;
         }
+        // fell off the end of the program
+        return extrinsic ? rt.takeExtrinsicValue() : null;
     }
 
     private static String toText(MValue v) {

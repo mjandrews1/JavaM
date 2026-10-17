@@ -48,12 +48,12 @@ S ^DD(".01")="b" …                   →  .01     ✓ (string preserved)
 
 ---
 
-## GAP-2 · `$$` extrinsic dispatch after a tagged-routine prelude — **OPEN**
+## GAP-2 · `$$` extrinsic dispatch after a tagged-routine prelude — **FIXED**
 
 **Class:** ENGINE GAP · **Engine:** native mJVM · **Gate:** A6 (`fm.extrinsic`, `fm.extrinsic-byref`)
 
-`$$tag(...)` dispatch works on a standalone line but is swallowed when the
-same code is compiled as part of a program that begins with a tagged routine.
+`$$tag(...)` dispatch works on a standalone line but was swallowed when the
+same code was compiled as part of a program that begins with a tagged routine.
 
 ```
 W $$P2("z"),!                                       →  zab      ✓
@@ -64,15 +64,29 @@ P2(Y)
 W $$P2("z"),!                                       →  ""       ✗  (handler never called)
 ```
 
-`MFrontend.compileProgram(prelude + code)` produces a program whose top-down
-run never reaches the trailing `W`, and `$$P2` never routes to
-`MRuntime.setExtrinsicHandler`. `LineInterp` handles this (it keeps `prog`/`tags`
-linked after the top-down run — the ZLINK semantics fix from PR #132).
+**Root cause:** `MFrontend.compile` did not treat `;` as a comment. A tag line
+like `P2(Y) ; extrinsic` has a comment-only body after formal extraction;
+`compile("; extrinsic")` threw `MError("expected command")`, and the catch in
+`compileRoutine` emitted `Ir.ret()` — severing fall-through into the next
+body line. `runExtrinsic` starting at the tag then hit that `RET` immediately,
+returning empty before the real body ran.
 
-**Where it matters:** any FileMan routine is a tagged routine; `$$fn(...)` is
-the standard FileMan extrinsic idiom. Without this, A6 cannot pass.
+**Fix:** `MFrontend.compile` now breaks on `;` (rest-of-line comment), so a
+comment-only body produces zero IR. Formal `BIND` ops fall through into the
+subsequent body lines as M semantics require.
 
-**Repro:** `tools/tier_a_gap_probe.sh` · `FileManTierANativeSmoke` cases `fm.extrinsic`, `fm.extrinsic-byref`.
+```java
+// before: compile("; extrinsic") → MError → catch → Ir.ret()
+// after:  compile("; extrinsic") → []  (comment stripped)
+```
+
+**Note:** the one-liner repro concatenating prelude + call into a single
+program is *not* valid M — a routine's `Q` ends the top-down run. The real
+shape is ZLINK: load the tagged routine, then run the call as a separate
+statement against the linked tags (what `FileManTierANativeSmoke.runNative`
+does). That shape now works on both engines.
+
+**Repro:** `tools/tier_a_gap_probe.sh` · `FileManTierANativeSmoke` cases `fm.extrinsic`, `fm.extrinsic-byref` (now HEALED).
 
 ---
 
@@ -81,13 +95,13 @@ the standard FileMan extrinsic idiom. Without this, A6 cannot pass.
 | gate | state |
 |---|---|
 | A5 golden parse (8 routines) | **PASS** 8/8 |
-| A7 FileMan-shaped RUN (10 cases) | **10/10 PASS** (GAP-1 fixed) |
-| A6 extrinsic (2 cases) | **0/2** — GAP-2 |
+| A7 FileMan-shaped RUN (10 cases) | **10/10 PASS** |
+| A6 extrinsic (2 cases) | **2/2 PASS** (GAP-2 fixed) |
 | A8 c3fst search | **SKIPPED** (c3fst deprecated) |
 
 `LineInterp` (JavaM) is green on the same gates: A5 8/8 · A7 10/10 · A6 2/2.
 
-**1.0 requires A5 + A6 + A7 green on BOTH engines.** Remaining: **GAP-2** (A6 ×2).
+**1.0 requires A5 + A6 + A7 green on BOTH engines. — ACHIEVED.**
 
 ---
 

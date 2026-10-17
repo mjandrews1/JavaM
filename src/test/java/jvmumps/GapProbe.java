@@ -30,9 +30,29 @@ public final class GapProbe {
         run("W 0.01 (control)  ", "W 0.01,!");
         run("S ^DD(\".01\")     ", "K ^DD S ^DD(\".01\")=\"b\" S K=\"\" S K=$O(^DD(K)) W K,!");
         System.out.println();
-        System.out.println("GAP 2: $$ dispatch after a tagged-routine prelude");
+        System.out.println("GAP 2: $$ dispatch after a tagged-routine prelude (ZLINK shape)");
         run("W $$P2 (bare)     ", "W $$P2(\"z\"),!");
-        run("prelude + W $$P2  ", " Q\nP2(Y)\n S Y=Y_\"ab\" Q Y\nW $$P2(\"z\"),!");
+        runZlink("ZLINK + W $$P2   ",
+                " Q\nP2(Y) ; extrinsic\n S Y=Y_\"ab\" Q Y\n",
+                "S X=$$P2(\"z\") W X,!");
+    }
+
+    /** ZLINK shape: load a tagged routine, then run a call against it. */
+    static void runZlink(String label, String prelude, String code) {
+        try {
+            mjvm.runtime.MRuntime rt = new mjvm.runtime.MRuntime(new MStore());
+            mjvm.compiler.MFrontend fe = new mjvm.compiler.MFrontend();
+            // Phase 1 — link the routine (tags stay callable).
+            var irRoutine = fe.compileProgram(prelude);
+            mjvm.runtime.IrMachine.run(irRoutine, rt, fe.lastTags());
+            rt.reset();
+            // Phase 2 — run the statement against the linked routine.
+            var ir = fe.compileProgram(code);
+            mjvm.runtime.IrMachine.run(ir, rt, fe.lastTags());
+            System.out.println("  " + label + " -> [" + rt.output().strip() + "]");
+        } catch (Exception e) {
+            System.out.println("  " + label + " -> EXC " + e);
+        }
     }
 
     private GapProbe() {}

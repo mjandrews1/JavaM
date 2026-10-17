@@ -20,6 +20,7 @@ public final class MFrontend {
     private final java.util.List<Integer> endJmps = new java.util.ArrayList<>();
 
     public List<Ir> compileLine(String line) {
+        lastTags = java.util.Map.of();
         return compile(line, true);
     }
 
@@ -37,6 +38,7 @@ public final class MFrontend {
         while (i < n) {
             i = MFrontendUtil.skipWs(line, i);
             if (i >= n) break;
+            if (line.charAt(i) == ';') break; // rest of line is a comment
             int st = i;
             while (i < n && Character.isLetter(line.charAt(i))) i++;
             String cmd = line.substring(st, i).toUpperCase();
@@ -60,7 +62,18 @@ public final class MFrontend {
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
                 i = MFrontendCmds.compileWrite(this, line, i, out);
             } else if (cmd.equals("Q") || cmd.equals("QUIT")) {
-                out.add(Ir.ret());
+                // Q / QUIT with an expression is an extrinsic return value
+                i = MFrontendUtil.skipWs(line, i);
+                int qs = i;
+                while (i < line.length() && !MFrontendUtil.isCmdStart(line, i)) i++;
+                String qexpr = line.substring(qs, i).trim();
+                if (!qexpr.isEmpty()) {
+                    // push the value the same way WRITE does, then capture it
+                    out.add(Ir.evalExpr(qexpr));
+                    out.add(Ir.retVal());
+                } else {
+                    out.add(Ir.ret());
+                }
                 break;
             } else if (cmd.equals("H") || cmd.equals("HALT") || cmd.equals("HANG")) {
                 while (i < line.length() && !MFrontendUtil.isCmdStart(line, i)) i++;
@@ -255,13 +268,24 @@ public final class MFrontend {
         return compileLine(code);
     }
 
+    /** True when the last compile was a tagged routine (tags are linkable). */
+    public boolean hasTags() {
+        return !lastTags.isEmpty();
+    }
+
     private java.util.Map<String, Integer> activeLabels;
     private java.util.List<int[]> activePatches;
     private int activeSelfLine;
     private boolean activeGoto;
+    /** Tags of the most recent compileRoutine — linked into the runtime (GAP-2). */
+    private java.util.Map<String, Integer> lastTags = java.util.Map.of();
+
+    public java.util.Map<String, Integer> lastTags() { return lastTags; }
+
     private int compileDepth;
 
     List<Ir> compileRoutine(String code) {
+        lastTags = java.util.Map.of();
         String[] raws = code.split("\n", -1);
         List<String> bodies = new ArrayList<>();
         List<String> tags = new ArrayList<>();
@@ -361,7 +385,7 @@ public final class MFrontend {
                 String[] fs = formalsOf.get(tag.toUpperCase()).split(",");
                 for (int fi = fs.length - 1; fi >= 0; fi--) {
                     String fn = fs[fi].trim();
-                    if (!fn.isEmpty()) bound.add(Ir.store(fn));
+                    if (!fn.isEmpty()) bound.add(Ir.bindFormal(fn));
                 }
                 int shift = 0;
                 for (int fi = fs.length - 1; fi >= 0; fi--) if (!fs[fi].trim().isEmpty()) shift++;
@@ -403,6 +427,14 @@ public final class MFrontend {
         if (prog.isEmpty() || (prog.get(prog.size()-1).op != Ir.RET && prog.get(prog.size()-1).op != Ir.RET_TO)) {
             prog.add(Ir.ret());
         }
+        // Tag table for linking: tag name -> IR offset of its line (GAP-2).
+        // `labels` held line indices; runExtrinsic needs IR offsets.
+        java.util.Map<String, Integer> tagPc = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, Integer> e : labels.entrySet()) {
+            int li = e.getValue();
+            if (li >= 0 && li < base.length) tagPc.put(e.getKey(), base[li]);
+        }
+        lastTags = tagPc;
         return prog;
     }
 
