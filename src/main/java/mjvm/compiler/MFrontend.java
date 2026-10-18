@@ -133,10 +133,16 @@ public final class MFrontend {
                     }
                     // argless DO: next token is a known command or EOL
                     int peek = MFrontendUtil.skipWs(line, i);
-                    if (peek >= line.length()
-                            || (Character.isLetter(line.charAt(peek)) && MFrontendUtil.isKnownCmd(
-                                    String.valueOf(line.charAt(peek))))) {
-                        // argless DO — no-op, body continues
+                    if (peek >= line.length()) {
+                        // argless DO at end of line — no-op
+                        continue;
+                    }
+                    // read the full word at peek
+                    int pw = peek;
+                    while (pw < line.length() && Character.isLetter(line.charAt(pw))) pw++;
+                    String pword = line.substring(peek, pw);
+                    if (Character.isLetter(line.charAt(peek)) && MFrontendUtil.isKnownCmd(pword)) {
+                        // argless DO — next is a command, not a target
                         continue;
                     }
                     activeGoto = isG;
