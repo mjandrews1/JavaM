@@ -37,7 +37,7 @@ jobs:
         run: |
           java -cp "build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" \
             jvmumps.MjvmNativeScore "$CORPUS" | tee native-score.txt
-          grep -q 'MATCH=131' native-score.txt
+          grep -q 'MATCH=135' native-score.txt
           grep -q 'ERR=0' native-score.txt
 
 

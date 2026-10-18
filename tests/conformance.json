@@ -1,852 +1,852 @@
 {
- "source": "Reference Standard M (pristine upstream)",
- "n_cases": 139,
- "cases": [
-  {
-   "name": "T12.ELSE-binding",
-   "code": "S X=0 I X=1 W \"THEN\",! E  W \"ELSE\",!",
-   "why": "ELSE must run when $TEST is false (ISO 7.2.4, rsm#12)",
-   "expected": ""
-  },
-  {
-   "name": "T12b.ELSE-chain",
-   "code": "S X=2 I X=1 W \"a\",! E  I X=2 W \"b\",! E  W \"c\",!",
-   "why": "nested ELSE binds to the nearest IF (rsm#12)",
-   "expected": ""
-  },
-  {
-   "name": "T11.empty-vs-zero",
-   "code": "S A=\"\" I A=0 W \"empty=0\",! E  W \"empty!=0\",!",
-   "why": "empty string is not numerically 0 (ISO 11756 8.3, rsm#11)",
-   "expected": ""
-  },
-  {
-   "name": "T11b.zero-vs-empty",
-   "code": "S B=0 I B=\"\" W \"0=empty\",! E  W \"0!=empty\",!",
-   "why": "0 is not the empty string (rsm#11)",
-   "expected": ""
-  },
-  {
-   "name": "T11c.str-zero-vs-zero",
-   "code": "S C=\"0\" I C=0 W \"str0=0\",! E  W \"str0!=0\",!",
-   "why": "\"0\" is numerically 0 (ISO 11756 8.3)",
-   "expected": "str0=0"
-  },
-  {
-   "name": "T11d.cmp-operators",
-   "code": "W \"lt=\",(\"a\"<\"b\"),\" eq=\",(\"a\"=\"a\"),\" gt=\",(\"b\">\"a\"),! W \"nlt=\",(1<2),\" neq=\",(1=2),!",
-   "why": "relational operators both directions (rsm#11)",
-   "expected": "lt=0 eq=1 gt=0\nnlt=1 neq=0"
-  },
-  {
-   "name": "T14.order-empty",
-   "code": "K ^CT14 S ^CT14(1)=\"a\",^CT14(2)=\"b\",^CT14(10)=\"c\" S K=\"\" S K=$O(^CT14(K)) W \"f=\",K,! S K=$O(^CT14(K)) W \"s=\",K,! S K=$O(^CT14(K)) W \"t=\",K,! S K=$O(^CT14(K)) W \"d=\",K,!",
-   "why": "$ORDER from empty subscript (ISO 9.9, rsm#14)",
-   "expected": "f=1\ns=2\nt=10\nd="
-  },
-  {
-   "name": "T14b.order-reverse",
-   "code": "K ^CT14 S ^CT14(1)=\"a\",^CT14(2)=\"b\",^CT14(10)=\"c\" S K=\"\" S K=$O(^CT14(K),-1) W \"last=\",K,! S K=$O(^CT14(K),-1) W \"prev=\",K,!",
-   "why": "$ORDER reverse from empty subscript (rsm#14)",
-   "expected": "last=10\nprev=2"
-  },
-  {
-   "name": "T15.tlevel",
-   "code": "W \"TLEVEL=\",$TLEVEL,!",
-   "why": "$TLEVEL outside a transaction (ISO 6.3.20, rsm#15)",
-   "expected": "Undefined special variable"
-  },
-  {
-   "name": "T13.pattern",
-   "code": "I \"a\"?1A.AN W \"p1\",! E  W \"p1f\",!",
-   "why": "pattern match (rsm#13)",
-   "expected": "p1"
-  },
-  {
-   "name": "T13b.pattern-alt",
-   "code": "I \"ab\"?1A1A W \"p2\",! E  W \"p2f\",!",
-   "why": "two-letter pattern (rsm#13)",
-   "expected": "p2"
-  },
-  {
-   "name": "C01.arith",
-   "code": "W 1+1,\" \",7/2,\" \",7#2,\" \",2**10,\" \",-5+8,!",
-   "why": "arithmetic: + / # ** unary minus",
-   "expected": "2 3.5 1 1024 3"
-  },
-  {
-   "name": "C02.concat",
-   "code": "W \"ab\"_\"cd\",\" \",\"x\"_1_y,!",
-   "why": "string concatenation with empty vars",
-   "expected": "Undefined local variable"
-  },
-  {
-   "name": "C03.data",
-   "code": "K ^CT3 W $D(^CT3),! S ^CT3=1 W $D(^CT3),! K ^CT3 S ^CT3(1)=1 W $D(^CT3),! S ^CT3=1 W $D(^CT3),!",
-   "why": "$DATA 0 / 1 / 10 / 11",
-   "expected": "0\n1\n10\n11"
-  },
-  {
-   "name": "C04.data-child",
-   "code": "K ^CT4 S ^CT4(1)=1 S ^CT4(1,2)=2 W $D(^CT4(1)),! W $D(^CT4(2)),!",
-   "why": "$DATA on a node with descendants",
-   "expected": "11\n0"
-  },
-  {
-   "name": "C05.piece",
-   "code": "S S=\"a,b,,d\" W $P(S,\",\"),\" \",$P(S,\",\",3),\" \",$P(S,\",\",2,3),!",
-   "why": "$PIECE single and range",
-   "expected": "a  b,"
-  },
-  {
-   "name": "C06.extract",
-   "code": "S S=\"abcdef\" W $E(S,2),\" \",$E(S,2,3),\" \",$E(S,5),!",
-   "why": "$EXTRACT single and range",
-   "expected": "b bc e"
-  },
-  {
-   "name": "C07.length",
-   "code": "S S=\"a,b,,d\" W $L(S),\" \",$L(S,\",\"),!",
-   "why": "$LENGTH default and by delimiter",
-   "expected": "6 4"
-  },
-  {
-   "name": "C08.globals",
-   "code": "K ^CT8 S ^CT8(\"a\")=1 S ^CT8(\"a\",\"b\")=2 W ^CT8(\"a\"),\" \",^CT8(\"a\",\"b\"),! K ^CT8(\"a\") W $D(^CT8(\"a\")),!",
-   "why": "global set / read / kill",
-   "expected": "1 2\n0"
-  },
-  {
-   "name": "C09.for",
-   "code": "S S=\"\" F I=1:1:5 S S=S_I W S,!",
-   "why": "FOR with step",
-   "expected": "1\n12\n123\n1234\n12345"
-  },
-  {
-   "name": "C10.for-list",
-   "code": "S S=\"\" F I=5,3,1 S S=S_I W S,!",
-   "why": "FOR with argument list",
-   "expected": "5\n53\n531"
-  },
-  {
-   "name": "C11.new-scope",
-   "code": "S X=1 N X S X=99 W X,!",
-   "why": "NEW scopes a variable",
-   "expected": "99"
-  },
-  {
-   "name": "C12.postcond",
-   "code": "S X=1 W:X=1 \"yes\",! W:X=2 \"no\",!",
-   "why": "post-conditional WRITE",
-   "expected": "yes"
-  },
-  {
-   "name": "C13.if-true",
-   "code": "S X=1 I X=1 W \"ok\",!",
-   "why": "IF with true $TEST",
-   "expected": "ok"
-  },
-  {
-   "name": "C14.divide-zero-guard",
-   "code": "W 10/2,\" \",10#3,!",
-   "why": "division and modulo",
-   "expected": "5 1"
-  },
-  {
-   "name": "C15.num-compare",
-   "code": "W (10>9),\" \",(9>10),\" \",(1=1),\" \",(1=2),!",
-   "why": "numeric relational operators",
-   "expected": "1 0 1 0"
-  },
-  {
-   "name": "C16.str-compare",
-   "code": "W (\"a\"<\"b\"),\" \",(\"b\"<\"a\"),\" \",(\"a\"=\"A\"),!",
-   "why": "string comparison is case-sensitive",
-   "expected": "0 0 0"
-  },
-  {
-   "name": "C17.neg",
-   "code": "W -3,\" \",0-5,\" \",-(2+3),!",
-   "why": "unary and binary minus",
-   "expected": "-3 -5 -5"
-  },
-  {
-   "name": "C18.concat-empty",
-   "code": "W \"[\"_\"\"_\"]\",\" \",\"[\"_1_\"]\",!",
-   "why": "concatenation with empty string",
-   "expected": "[] [1]"
-  },
-  {
-   "name": "C19.intrinsic-chain",
-   "code": "W $L($E(\"abcdef\",2,4)),!",
-   "why": "nested intrinsic functions",
-   "expected": "3"
-  },
-  {
-   "name": "C20.write-numbers",
-   "code": "W 0,\" \",1,\" \",100,\" \",1.5,\" \",-0.5,!",
-   "why": "number output formatting",
-   "expected": "0 1 100 1.5 -.5"
-  },
-  {
-   "name": "C21.truthiness",
-   "code": "I \"abc\" W \"abc=T\",!\nI \"0.5\" W \"0.5=T\",!\nI \"0abc\" W \"0abc=T\",!\nI \"1abc\" W \"1abc=T\",!\nI \" 1\" W \"sp1=T\",!\nI \"1 \" W \"1sp=T\",!\nI \"-0\" W \"m0=T\",!\nI \"\" W \"empty=T\",!\nI \"0.0\" W \"0.0=T\",!\nI \"1E2\" W \"1E2=T\",!\nI -0.5 W \"m0.5=T\",!",
-   "why": "IF truthiness is cstringtob / to_num != 0, not non-empty string (runtime/util.c:108)",
-   "expected": "0.5=T\n1abc=T\n1sp=T\n1E2=T\nm0.5=T"
-  },
-  {
-   "name": "C22.mod-signs",
-   "code": "W -7#3,\" \",7#-3,\" \",-7#-3,\" \",7#3,\" \",10#3,\" \",-10#3,\" \",10#-3,\" \",-7.5#2,!",
-   "why": "M # is floored modulo, sign follows divisor (runtime/math.c runtime_div OPMOD)",
-   "expected": "2 -2 -1 1 1 2 -2 .5"
-  },
-  {
-   "name": "C23.enotation-cmp",
-   "code": "W (\"1E2\">99),\" \",(\"1E2\">101),!",
-   "why": "E notation is numeric for <> (HISTORIC_EOK on by default, util/memory.c:98)",
-   "expected": "1 0"
-  },
-  {
-   "name": "C24.eq-noncanonical",
-   "code": "W (\"1.0\"=1),\" \",(\"1E2\"=100),\" \",(\"+1\"=1),!",
-   "why": "rsm#11b -- = is memcmp on string forms, not numeric equality (run.c:457)",
-   "expected": "0 0 0"
-  },
-  {
-   "name": "C25.mstr-frac",
-   "code": "W 0.5,\" \",-0.5,\" \",0.25,\" \",-0.25,\" \",0.05,\" \",1.5,\" \",0,!",
-   "why": "M drops the fraction's leading zero whenever the integer part is 0",
-   "expected": ".5 -.5 .25 -.25 .05 1.5 0"
-  },
-  {
-   "name": "C26.pattern-classes",
-   "code": "W (\"a\"?1A),\" \",(\"1\"?1N),\" \",(\"x\"?1AN),\" \",(\"1\"?1AN),\" \",(\"!\"?1AN),\" \",(\"!\"?1AP),\" \",(\"5\"?1AP),!",
-   "why": "pattern class codes and two-letter alternation (A or N = alphanumeric)",
-   "expected": "1 1 1 1 0 1 0"
-  },
-  {
-   "name": "C27.pattern-counts",
-   "code": "W (\"\"?1A),\" \",(\"\"?.A),\" \",(\"abc\"?.A),\" \",(\"abc\"?3A),\" \",(\"abc\"?2.3A),\" \",(\"hello\"?1E),\" \",(\"hello\"?5E),\" \",(\"hello\"?1.5E),!",
-   "why": "pattern repetition counts: n, .m, n.m, . = 0..255",
-   "expected": "0 1 1 1 1 0 1 1"
-  },
-  {
-   "name": "C28.pattern-literal",
-   "code": "W (\"hello\"?1\"hello\"),\" \",(\"hello\"?1\"hell\"),\" \",(\"hihi\"?2\"hi\"),!",
-   "why": "quoted pattern literals",
-   "expected": "1 0 1"
-  },
-  {
-   "name": "C29.pattern-fullstring",
-   "code": "W (\"a\"?1A.AN),\" \",(\"ab\"?1A.AN),\" \",(\"a1\"?1A.AN),\" \",(\"a!\"?1A.AN),!",
-   "why": "1A.AN is one alpha then 0..255 alphanumerics; match must consume the whole string",
-   "expected": "1 1 1 0"
-  },
-  {
-   "name": "C30.prec-mul-add",
-   "code": "W 1+2*3,\" \",2*3+1,!",
-   "why": "left-to-right: 1+2*3 is (1+2)*3=9, not 7",
-   "expected": "9 7"
-  },
-  {
-   "name": "C31.prec-cat-rel",
-   "code": "W (1_2=12),\" \",(1=1_2),\" \",(\"x\"_1+1),!",
-   "why": "concat and relational share a level, left-assoc",
-   "expected": "1 12 1"
-  },
-  {
-   "name": "C32.prec-div-pow",
-   "code": "W 12/2/2,\" \",2**3**2,\" \",3-2-1,!",
-   "why": "left-assoc division and power",
-   "expected": "3 64 0"
-  },
-  {
-   "name": "C33.contains",
-   "code": "W (\"abc\"[\"b\"),\" \",(\"abc\"[\"x\"),\" \",(\"abc\"[\"\"),!",
-   "why": "contains [ ",
-   "expected": "1 0 1"
-  },
-  {
-   "name": "C34.follows-sorts",
-   "code": "W (\"b\"]\"a\"),\" \",(\"a\"]\"b\"),\" \",(\"b\"]]\"a\"),\" \",(\"a\"]]\"b\"),!",
-   "why": "follows ] and sorts-after ]] ",
-   "expected": "1 0 1 0"
-  },
-  {
-   "name": "C35.bool-ops",
-   "code": "W ('0),('1),(1&1),(1&0),(0!1),(0!0),!",
-   "why": "unary NOT, AND, OR",
-   "expected": "101010"
-  },
-  {
-   "name": "C36.bool-ops2",
-   "code": "W (1'&0),(0'&0),(1'!0),(0'!0),!",
-   "why": "NAND ' &  and NOR ' ! ",
-   "expected": "1101"
-  },
-  {
-   "name": "C37.not-rel",
-   "code": "W (\"a\"='\"a\"),(\"a\"'=\"b\"),(1'<2),(1'>2),!",
-   "why": "negated relational operators",
-   "expected": "0101"
-  },
-  {
-   "name": "C38.ascii",
-   "code": "W $A(\"A\"),\" \",$A(\"ABC\",2),\" \",$A(\"\"),\" \",$A(\"A\",5),!",
-   "why": "$ASCII 1-arg, 2-arg, empty, out of range -> -1",
-   "expected": "65 66 -1 -1"
-  },
-  {
-   "name": "C39.char",
-   "code": "W $C(65),\" \",$C(65,66),\" \",$C(256),\" \",$L($C(65,66)),!",
-   "why": "$CHAR single, multi, out of range -> empty",
-   "expected": "A AB  2"
-  },
-  {
-   "name": "C40.find",
-   "code": "W $F(\"abc\",\"b\"),\" \",$F(\"abc\",\"b\",2),\" \",$F(\"abc\",\"x\"),\" \",$F(\"abc\",\"\"),\" \",$F(\"abab\",\"ab\",2),!",
-   "why": "$FIND position after match, start, miss, empty needle, later match",
-   "expected": "3 3 0 1 5"
-  },
-  {
-   "name": "C41.get",
-   "code": "W \"[\",$G(X),\"]\",\"[\",$G(X,\"d\"),\"]\",! S X=1 W \"[\",$G(X),\"]\",\"[\",$G(X,\"d\"),\"]\",!",
-   "why": "$GET undefined/defined with default; lazy on undefined",
-   "expected": "[][d]\n[1][1]"
-  },
-  {
-   "name": "C42.justify",
-   "code": "W \"[\",$J(\"ab\",5),\"]\",\"[\",$J(3.14159,8,2),\"]\",\"[\",$J(\"abcdef\",3),\"]\",!",
-   "why": "$JUSTIFY 2-arg pad, 3-arg round, size < length",
-   "expected": "[   ab][    3.14][abcdef]"
-  },
-  {
-   "name": "C43.reverse",
-   "code": "W $RE(\"abc\"),\" \",$RE(\"\"),\" \",$RE(\"ab\"),!",
-   "why": "$REVERSE",
-   "expected": "cba  ba"
-  },
-  {
-   "name": "C44.translate",
-   "code": "W $TR(\"abc\",\"ab\",\"xy\"),\" \",$TR(\"abc\",\"ab\",\"x\"),\" \",$TR(\"abc\",\"ab\"),\" \",$TR(\"abc\",\"\"),!",
-   "why": "$TRANSLATE replace, shorten map, delete, empty map",
-   "expected": "xyc xc c abc"
-  },
-  {
-   "name": "C45.name",
-   "code": "S A(1,\"b\")=2 W $NA(A),\" \",$NA(A(1,\"b\")),\" \",$NA(A(1,\"b\"),1),!",
-   "why": "$NAME full and truncated to n subscripts",
-   "expected": "A A(1,\"b\") A(1)"
-  },
-  {
-   "name": "C46.increment",
-   "code": "K Z W $I(Z),\" \",$I(Z,2),\" \",Z,\" \",$I(Z,-1),\" \",Z,!",
-   "why": "$INCREMENT default 1, delta, store, negative delta",
-   "expected": "1 3 3 2 2"
-  },
-  {
-   "name": "C47.fnumber",
-   "code": "W $FN(1234.567,\",\",2),\" \",$FN(1234.5,\"\"),!",
-   "why": "$FNUMBER with comma code and empty code",
-   "expected": "1,234.57 1234.5"
-  },
-  {
-   "name": "C48.random-range",
-   "code": "S R=$RANDOM(5) I R<5 W \"ok\",!",
-   "why": "$RANDOM stays in 0..n-1",
-   "expected": "ok"
-  },
-  {
-   "name": "C49.set-extract",
-   "code": "S S=\"abcdef\" S $E(S,2,3)=\"XY\" W S,! S $E(S,1)=\"Z\" W S,!",
-   "why": "SET $EXTRACT range and single",
-   "expected": "aXYdef\nZXYdef"
-  },
-  {
-   "name": "C50.set-piece",
-   "code": "S P=\"a,b,c\" S $P(P,\",\",2)=\"Z\" W P,! S $P(P,\",\",2,3)=\"Y\" W P,!",
-   "why": "SET $PIECE single and range",
-   "expected": "a,Z,c\na,Y"
-  },
-  {
-   "name": "C51.query-fwd",
-   "code": "K ^QM S ^QM(1)=\"a\" S ^QM(2)=\"b\" S ^QM(2,1)=\"c\" S ^QM(2,1,\"x\")=\"d\" S ^QM(10)=\"e\" W $Q(^QM),\" \",$Q(^QM(2)),\" \",$Q(^QM(2,1)),\" \",$Q(^QM(2,1,\"x\")),\" \",$Q(^QM(10)),!",
-   "why": "$QUERY forward: parent before child, then next sibling",
-   "expected": "^QM(1) ^QM(2,1) ^QM(2,1,\"x\") ^QM(10) "
-  },
-  {
-   "name": "C52.query-back",
-   "code": "K ^QM S ^QM(1)=\"a\" S ^QM(2)=\"b\" S ^QM(2,1)=\"c\" S ^QM(2,1,\"x\")=\"d\" S ^QM(10)=\"e\" W $Q(^QM(2),-1),\" \",$Q(^QM(2,1),-1),\" \",$Q(^QM(10),-1),!",
-   "why": "$QUERY reverse",
-   "expected": "^QM(1) ^QM(2) ^QM(2,1,\"x\")"
-  },
-  {
-   "name": "C53.query-local",
-   "code": "K L S L(1)=\"x\" S L(1,2)=\"y\" S L(3)=\"z\" W $Q(L),\" \",$Q(L(1,2)),\" \",$Q(L(3)),!",
-   "why": "$QUERY on locals, bare name starts the walk",
-   "expected": "L(1) L(3) "
-  },
-  {
-   "name": "C54.qlength",
-   "code": "K ^QM S ^QM(2,1)=\"c\" W $QL(\"^A(1,2,3)\"),\" \",$QL(\"^A\"),\" \",$QL($NA(^QM(2,1))),!",
-   "why": "$QLENGTH of a closed name string",
-   "expected": "3 0 2"
-  },
-  {
-   "name": "C55.qsubscript",
-   "code": "W $QS(\"^A(1,2,3)\",0),\" \",$QS(\"^A(1,2,3)\",1),\" \",$QS(\"^A(1,2,3)\",2),\" \",$QS(\"^A(1,2,3)\",3),\" \",$QS(\"^A(1,2,3)\",4),!",
-   "why": "$QSUBSCRIPT: 0 is the naked name, 1..n the subscripts",
-   "expected": "^A 1 2 3 "
-  },
-  {
-   "name": "C56.merge-global",
-   "code": "K ^MD S ^MD(1)=\"a\" S ^MD(1,2)=\"b\" S ^MD(1,2,3)=\"c\" S ^MD(2)=\"d\" K ^ME MERGE ^ME=^MD W $D(^ME(1)),\" \",$D(^ME(1,2)),\" \",$D(^ME(1,2,3)),\" \",$D(^ME(2)),\" \",$D(^ME),!",
-   "why": "MERGE deep-copies a global subtree",
-   "expected": "11 11 1 1 10"
-  },
-  {
-   "name": "C57.merge-values",
-   "code": "K ^MD S ^MD(1,2,3)=\"c\" S ^MD(2)=\"d\" K ^ME MERGE ^ME=^MD W ^ME(1,2,3),\" \",^ME(2),!",
-   "why": "MERGE copies values",
-   "expected": "c d"
-  },
-  {
-   "name": "C58.merge-subtree",
-   "code": "K ^MD S ^MD(1)=\"a\" S ^MD(1,2)=\"b\" S ^MD(1,2,3)=\"c\" S ^MD(2)=\"d\" K ^MF(1) MERGE ^MF(1)=^MD(1) W $D(^MF(1)),\" \",$D(^MF(1,2)),\" \",$D(^MF(2)),!",
-   "why": "MERGE from a subtree into a target node",
-   "expected": "11 11 0"
-  },
-  {
-   "name": "C59.merge-local",
-   "code": "S A(1)=\"p\" S A(1,2)=\"q\" K B MERGE B=A W $D(B(1)),\" \",$D(B(1,2)),\" \",B(1,2),!",
-   "why": "MERGE locals",
-   "expected": "11 1 q"
-  },
-  {
-   "name": "C60.merge-overlay",
-   "code": "K ^X S ^X(1)=\"old\" S ^X(1,2)=\"old2\" S ^X(9)=\"keep\" K ^Y S ^Y(1)=\"new\" S ^Y(1,2,3)=\"new3\" MERGE ^X(1)=^Y(1) W $D(^X(1)),\" \",$D(^X(1,2)),\" \",$D(^X(1,2,3)),\" \",$D(^X(9)),\" \",^X(1),\" \",^X(1,2),\" \",^X(1,2,3),!",
-   "why": "MERGE overlays; dest children not in src are kept",
-   "expected": "11 11 1 1 new old2 new3"
-  },
-  {
-   "name": "C61.ind-name",
-   "code": "S X=\"Y\" S Y=42 W @X,!",
-   "why": "name indirection: @X evaluates X then uses it as a reference",
-   "expected": "42"
-  },
-  {
-   "name": "C62.ind-closed",
-   "code": "S A(1)=\"hello\" S R=\"A(1)\" W @R,!",
-   "why": "closed-reference indirection",
-   "expected": "hello"
-  },
-  {
-   "name": "C63.ind-computed",
-   "code": "S A(1)=\"hello\" S N=\"A\" W @(N_\"(1)\"),!",
-   "why": "computed indirection",
-   "expected": "hello"
-  },
-  {
-   "name": "C64.ind-expr",
-   "code": "S Q=\"1+1\" W @Q,!",
-   "why": "expression indirection evaluates the string as an M expression",
-   "expected": "2"
-  },
-  {
-   "name": "C65.ind-args",
-   "code": "S LIST=\"1,2,3\" W \"C65|\",@LIST,!",
-   "why": "argument indirection: the string is reparsed as command arguments",
-   "expected": "C65|123"
-  },
-  {
-   "name": "C66.ind-set",
-   "code": "S W2=\"Y\" S Y=1 S @W2=99 W Y,!",
-   "why": "indirect SET target",
-   "expected": "99"
-  },
-  {
-   "name": "C67.ind-intrinsic",
-   "code": "K L S L(1)=1 S L(2)=2 S IDX=\"L(1)\" W $D(@IDX),\" \",$O(@IDX),!",
-   "why": "$DATA/$ORDER through indirection",
-   "expected": "1 2"
-  },
-  {
-   "name": "C68.ind-global",
-   "code": "K ^G S ^G(2)=\"gv\" S P=\"^G(2)\" W @P,!",
-   "why": "global indirection",
-   "expected": "gv"
-  },
-  {
-   "name": "C69.stack-basic",
-   "code": "W $ST(0),\" \",$ST(-1),\" \",$STACK,!",
-   "why": "$STACK/$ST in direct mode",
-   "expected": "RUN 0 0"
-  },
-  {
-   "name": "C70.stack-place",
-   "code": "W $ST(0,\"PLACE\"),!",
-   "why": "$ST level-0 PLACE is @ in direct mode",
-   "expected": "@"
-  },
-  {
-   "name": "C71.text-empty",
-   "code": "W $TEXT(+1),\" \",$TEXT(FOO),!",
-   "why": "$TEXT with no routine loaded is empty; bare $TEXT is undefined",
-   "expected": " "
-  },
-  {
-   "name": "C72.stack-deep",
-   "code": "W $ST(1),\"|\",$ST(2),!",
-   "why": "$ST of empty levels is empty",
-   "expected": "|"
-  },
-  {
-   "name": "C73.ind-levels",
-   "code": "S X=\"Y\" S Y=\"Z\" S Z=7 W @X,\" \",@@X,!",
-   "why": "@ is one expression indirection; @@ is two",
-   "expected": "Z 7"
-  },
-  {
-   "name": "C74.ind-parent-undef",
-   "code": "K A S A(1)=\"u\" S A(2)=\"v\" S N=\"A\" W @N,!",
-   "why": "@ of a name that has only descendants is undefined as a value",
-   "expected": "Undefined local variable"
-  },
-  {
-   "name": "C75.ind-kill",
-   "code": "K A S A(1)=\"t\" S S2=\"A(1)\" K @S2 W $D(A(1)),!",
-   "why": "KILL through indirection",
-   "expected": "0"
-  },
-  {
-   "name": "C76.ind-prec",
-   "code": "S W3=\"1\" W @W3+1,!",
-   "why": "@ binds as a primary: @W3+1 is (@W3)+1",
-   "expected": "2"
-  },
-  {
-   "name": "C77.horolog-fmt",
-   "code": "S H=$H I $L(H,\",\")=2 W \"fmt\",!",
-   "why": "$HOROLOG is day,sec (Vhorolog)",
-   "expected": "fmt"
-  },
-  {
-   "name": "C78.horolog-eq-name",
-   "code": "S A=$HOROLOG I A=$H W \"same\",!",
-   "why": "$HOROLOG and $H are the same value",
-   "expected": "same"
-  },
-  {
-   "name": "C79.horolog-range",
-   "code": "S H=$H S D=$P(H,\",\",1) S S=$P(H,\",\",2) I (D>0)&(S>0)&(S<86401) W \"ok\",!",
-   "why": "day>0 and 0<sec<86401",
-   "expected": "ok"
-  },
-  {
-   "name": "C80.hang-zero",
-   "code": "W \"pre\",! HANG 0 W \"post\",!",
-   "why": "HANG 0 continues immediately (OPHANG)",
-   "expected": "pre\npost"
-  },
-  {
-   "name": "C81.bare-q-special",
-   "code": "W $Q,!",
-   "why": "bare $Q is $QUIT special (0 in direct mode)",
-   "expected": "0"
-  },
-  {
-   "name": "C82.q-arity-query",
-   "code": "K ^CQ S ^CQ(1)=1 S X=\"\" W $Q(^CQ(X)),!",
-   "why": "$Q(...) is $QUERY, not $QUIT",
-   "expected": "^CQ(1)"
-  },
-  {
-   "name": "C83.select-basic",
-   "code": "W $S(0:1,1:2,1:3),!",
-   "why": "$SELECT returns first true pair value",
-   "expected": "2"
-  },
-  {
-   "name": "C84.select-first-true",
-   "code": "W $S(1:10,1:20),!",
-   "why": "$SELECT first true wins",
-   "expected": "10"
-  },
-  {
-   "name": "C85.select-branch",
-   "code": "S X=2 W $S(X=1:\"one\",X=2:\"two\",1:\"other\"),!",
-   "why": "$SELECT with default branch",
-   "expected": "two"
-  },
-  {
-   "name": "C86.next-forward",
-   "code": "K ^CN S ^CN(1)=1,^CN(2)=2 S K=1 W $NEXT(^CN(K)),!",
-   "why": "$NEXT is forward $ORDER (ISO; RSM needs HISTORIC_DNOK)",
-   "expected": "2"
-  },
-  {
-   "name": "C87.next-abbr-name",
-   "code": "K ^CN S ^CN(1)=1,^CN(2)=2 S K=1 W $N(^CN(K)),!",
-   "why": "$N is $NEXT; $NA is $NAME (dollar.c:624)",
-   "expected": "2"
-  },
-  {
-   "name": "C88.name-na",
-   "code": "S A(1)=1 W $NA(A(1)),!",
-   "why": "$NA is $NAME not $NEXT",
-   "expected": "A(1)"
-  },
-  {
-   "name": "C89.xy-init",
-   "code": "W $X,\" \",$Y,!",
-   "why": "$X/$Y start at 0 0",
-   "expected": "0 0"
-  },
-  {
-   "name": "C90.xy-after-write",
-   "code": "W \"abc\" W $X,!",
-   "why": "$X advances by output length",
-   "expected": "abc\n3"
-  },
-  {
-   "name": "C91.xy-after-nl",
-   "code": "W \"abc\",! W $X,\" \",$Y,!",
-   "why": "newline resets $X and increments $Y",
-   "expected": "abc\n0 1"
-  },
-  {
-   "name": "C92.xy-set-x",
-   "code": "W \"abc\" S $X=0 W $X,!",
-   "why": "SET $X assigns cursor",
-   "expected": "abc\n0"
-  },
-  {
-   "name": "C93.select-no-true",
-   "code": "W $S(0:1),!",
-   "why": "$SELECT with no true pair errors (M4)",
-   "expected": "No true condition in $SELECT"
-  },
-  {
-   "name": "C94.do-tag",
-   "code": "MAIN D FOO\n Q\nFOO W \"in-foo\",!\n Q",
-   "why": "DO label then QUIT returns",
-   "expected": "in-foo"
-  },
-  {
-   "name": "C95.goto-tag",
-   "code": "MAIN G FOO\n W \"skipped\",!\n Q\nFOO W \"at-foo\",!",
-   "why": "GOTO label skips following lines",
-   "expected": "at-foo"
-  },
-  {
-   "name": "C96.do-argless-dots",
-   "code": "MAIN D\n . W \"in-block\",!\n W \"after\",!",
-   "why": "argless DO runs dotted block then continues",
-   "expected": "in-block\nafter"
-  },
-  {
-   "name": "C97.xecute",
-   "code": "MAIN X \"S X=42\" W X,!",
-   "why": "XECUTE runs string as M",
-   "expected": "42"
-  },
-  {
-   "name": "C98.xecute-write",
-   "code": "MAIN X \"W \"\"hi\"\",!\"",
-   "why": "XECUTE with quoted WRITE",
-   "expected": "hi"
-  },
-  {
-   "name": "C99.do-args",
-   "code": "MAIN D ADD(2,3)\n Q\nADD(A,B) W A+B,!\n Q",
-   "why": "DO label with formal args",
-   "expected": "5"
-  },
-  {
-   "name": "C100.do-postcond",
-   "code": "MAIN D:0 FOO\n D:1 FOO\n Q\nFOO W \"foo\",!\n Q",
-   "why": "DO post-conditional",
-   "expected": "foo"
-  },
-  {
-   "name": "C101.goto-postcond",
-   "code": "MAIN G:0 FOO\n G:1 BAR\n Q\nFOO W \"no\",!\n Q\nBAR W \"yes\",!",
-   "why": "GOTO post-conditional",
-   "expected": "yes"
-  },
-  {
-   "name": "C102.nested-do",
-   "code": "MAIN D OUTER\n Q\nOUTER W \"o1\",! D INNER W \"o2\",!\n Q\nINNER W \"i\",!\n Q",
-   "why": "nested DO return order",
-   "expected": "o1\ni\no2"
-  },
-  {
-   "name": "C103.do-routine",
-   "code": "MAIN W \"start\",! D ^SUB W \"end\",!",
-   "routines": {
-    "SUB": "SUB W \"in-sub\",!\n Q"
-   },
-   "why": "DO ^routine call",
-   "expected": "start\nin-sub\nend"
-  },
-  {
-   "name": "C104.do-tag-routine",
-   "code": "MAIN D ENTRY^SUB W \"!\",!",
-   "routines": {
-    "SUB": "ENTRY W \"entry\",!\n Q\nOTHER W \"other\",!\n Q"
-   },
-   "why": "DO tag^routine",
-   "expected": "entry\n!"
-  },
-  {
-   "name": "C105.extrinsic-routine",
-   "code": "MAIN W $$ADD^SUB(2,3),!",
-   "routines": {
-    "SUB": "ADD(A,B) Q A+B"
-   },
-   "why": "$$fn^routine extrinsic",
-   "expected": "5"
-  },
-  {
-   "name": "C106.extrinsic-same",
-   "code": "MAIN W $$ADD(2,3),!\n Q\nADD(A,B) Q A+B",
-   "why": "$$fn same-routine extrinsic",
-   "expected": "5"
-  },
-  {
-   "name": "C107.do-routine-args",
-   "code": "MAIN D ^SUB(\"hi\")\n Q",
-   "routines": {
-    "SUB": "SUB(S) W S,!\n Q"
-   },
-   "why": "DO ^routine with formals",
-   "expected": "hi"
-  },
-  {
-   "name": "C108.lock-simple",
-   "code": "MAIN L +^L1 W \"got\",! L -^L1 W \"done\",!",
-   "why": "LOCK +global then -global",
-   "expected": "got\ndone"
-  },
-  {
-   "name": "C109.lock-local",
-   "code": "MAIN L +X W \"got\",!",
-   "why": "LOCK +local",
-   "expected": "got"
-  },
-  {
-   "name": "C110.lock-relock",
-   "code": "MAIN L +X:0 W \"got\",! L +X:0 W \"twice\",!",
-   "why": "LOCK +ref:timeout re-lock same process",
-   "expected": "got\ntwice"
-  },
-  {
-   "name": "C111.lock-minus",
-   "code": "MAIN L +X L -X W \"off\",!",
-   "why": "LOCK -ref unlocks",
-   "expected": "off"
-  },
-  {
-   "name": "C112.lock-comma",
-   "code": "MAIN L +X,Y W \"both\",!",
-   "why": "LOCK +a,b",
-   "expected": "both"
-  },
-  {
-   "name": "C113.etrap-set-get",
-   "code": "S $ETRAP=\"W \"\"T\"\",!\" W $ETRAP,!",
-   "expected": "W \"T\",!",
-   "why": "$ETRAP SET/GET"
-  },
-  {
-   "name": "C114.ecode-set-get",
-   "code": "S $ECODE=\",E1\" W $ECODE,!",
-   "expected": ",E1",
-   "why": "$ECODE SET/GET"
-  },
-  {
-   "name": "C115.etrap-fire",
-   "code": "S $ETRAP=\"W \"\"T\"\",!\" S Z=NOPE W \"after\",!",
-   "expected": "T\nafter",
-   "why": "$ETRAP runs on undefined local"
-  },
-  {
-   "name": "C116.etrap-ecode",
-   "code": "S $ECODE=\"\" S $ETRAP=\"S $ECODE=\"\"E\"\" W \"\"T\"\",!\" S Z=NOPE W \"ec=\",$ECODE,!",
-   "expected": "T\nec=E",
-   "why": "trap can SET $ECODE"
-  },
-  {
-   "name": "C117.view-noop",
-   "code": "VIEW 1 W \"ok\",!",
-   "expected": "ok",
-   "why": "VIEW accepted (impl-defined)"
-  },
-  {
-   "name": "C118.device-special",
-   "code": "W $DEVICE,!",
-   "expected": "\n",
-   "why": "$DEVICE empty on principal"
-  },
-  {
-   "name": "C119.storage-system",
-   "code": "W $STORAGE>0,\" \",($SYSTEM'=\"\"),!",
-   "expected": "1 1",
-   "why": "$STORAGE numeric, $SYSTEM non-empty"
-  },
-  {
-   "name": "C120.io-principal",
-   "code": "W $IO,\" \",$PRINCIPAL,!",
-   "expected": "0 0",
-   "why": "$IO/$PRINCIPAL start at 0"
-  },
-  {
-   "name": "C121.write-char",
-   "code": "W *65,!",
-   "expected": "A",
-   "why": "WRITE *n ASCII"
-  },
-  {
-   "name": "C122.write-char-nl",
-   "code": "W \"ab\",*10,\"cd\",!",
-   "expected": "ab\ncd",
-   "why": "WRITE *10 is newline"
-  },
-  {
-   "name": "C123.write-col",
-   "code": "W \"x\",?5,\"y\",!",
-   "expected": "x    y",
-   "why": "WRITE ?n column pad"
-  },
-  {
-   "name": "C124.write-ff",
-   "code": "W \"a\",#,\"b\",!",
-   "expected": "a\nb",
-   "why": "WRITE # form feed (line break)"
-  },
-  {
-   "name": "C125.ztrap-set-get",
-   "code": "S $ZTRAP=\"W \"\"Z\"\",!\" W $ZTRAP,!",
-   "expected": "W \"Z\",!",
-   "why": "$ZTRAP SET/GET"
-  },
-  {
-   "name": "C126.zversion-zjob",
-   "code": "W ($ZVERSION'=\"\"),\" \",$ZJOB,!",
-   "expected": "1 1",
-   "why": "$ZVERSION non-empty, $ZJOB=1"
-  },
-  {
-   "name": "C127.zlevel-zsystem",
-   "code": "W $ZLEVEL,\" \",($ZSYSTEM'=\"\"),!",
-   "expected": "0 1",
-   "why": "$ZLEVEL, $ZSYSTEM non-empty"
-  },
-  {
-   "name": "C128.zeof",
-   "code": "W $ZEOF,!",
-   "expected": "0",
-   "why": "$ZEOF at principal"
-  }
- ]
+  "source": "Reference Standard M (pristine upstream)",
+  "n_cases": 139,
+  "cases": [
+    {
+      "name": "T12.ELSE-binding",
+      "code": "S X=0 I X=1 W \"THEN\",! E  W \"ELSE\",!",
+      "why": "ELSE must run when $TEST is false (ISO 7.2.4, rsm#12)",
+      "expected": "ELSE"
+    },
+    {
+      "name": "T12b.ELSE-chain",
+      "code": "S X=2 I X=1 W \"a\",! E  I X=2 W \"b\",! E  W \"c\",!",
+      "why": "nested ELSE binds to the nearest IF (rsm#12)",
+      "expected": "b"
+    },
+    {
+      "name": "T11.empty-vs-zero",
+      "code": "S A=\"\" I A=0 W \"empty=0\",! E  W \"empty!=0\",!",
+      "why": "empty string is not numerically 0 (ISO 11756 8.3, rsm#11)",
+      "expected": "empty!=0"
+    },
+    {
+      "name": "T11b.zero-vs-empty",
+      "code": "S B=0 I B=\"\" W \"0=empty\",! E  W \"0!=empty\",!",
+      "why": "0 is not the empty string (rsm#11)",
+      "expected": "0!=empty"
+    },
+    {
+      "name": "T11c.str-zero-vs-zero",
+      "code": "S C=\"0\" I C=0 W \"str0=0\",! E  W \"str0!=0\",!",
+      "why": "\"0\" is numerically 0 (ISO 11756 8.3)",
+      "expected": "str0=0"
+    },
+    {
+      "name": "T11d.cmp-operators",
+      "code": "W \"lt=\",(\"a\"<\"b\"),\" eq=\",(\"a\"=\"a\"),\" gt=\",(\"b\">\"a\"),! W \"nlt=\",(1<2),\" neq=\",(1=2),!",
+      "why": "#:DIVERGE rsm#11 -- relational < > on strings return 0 (ISO 7.4 does case-sensitive string compare)",
+      "expected": "lt=0 eq=1 gt=0\nnlt=1 neq=0"
+    },
+    {
+      "name": "T14.order-empty",
+      "code": "K ^CT14 S ^CT14(1)=\"a\",^CT14(2)=\"b\",^CT14(10)=\"c\" S K=\"\" S K=$O(^CT14(K)) W \"f=\",K,! S K=$O(^CT14(K)) W \"s=\",K,! S K=$O(^CT14(K)) W \"t=\",K,! S K=$O(^CT14(K)) W \"d=\",K,!",
+      "why": "$ORDER from empty subscript (ISO 9.9, rsm#14)",
+      "expected": "f=1\ns=2\nt=10\nd="
+    },
+    {
+      "name": "T14b.order-reverse",
+      "code": "K ^CT14 S ^CT14(1)=\"a\",^CT14(2)=\"b\",^CT14(10)=\"c\" S K=\"\" S K=$O(^CT14(K),-1) W \"last=\",K,! S K=$O(^CT14(K),-1) W \"prev=\",K,!",
+      "why": "$ORDER reverse from empty subscript (rsm#14)",
+      "expected": "last=10\nprev=2"
+    },
+    {
+      "name": "T15.tlevel",
+      "code": "W \"TLEVEL=\",$TLEVEL,!",
+      "why": "#:DIVERGE rsm#15 -- $TLEVEL not implemented (ISO 6.3.20 defines it as DO nesting level)",
+      "expected": "Undefined special variable"
+    },
+    {
+      "name": "T13.pattern",
+      "code": "I \"a\"?1A.AN W \"p1\",! E  W \"p1f\",!",
+      "why": "pattern match (rsm#13)",
+      "expected": "p1"
+    },
+    {
+      "name": "T13b.pattern-alt",
+      "code": "I \"ab\"?1A1A W \"p2\",! E  W \"p2f\",!",
+      "why": "two-letter pattern (rsm#13)",
+      "expected": "p2"
+    },
+    {
+      "name": "C01.arith",
+      "code": "W 1+1,\" \",7/2,\" \",7#2,\" \",2**10,\" \",-5+8,!",
+      "why": "arithmetic: + / # ** unary minus",
+      "expected": "2 3.5 1 1024 3"
+    },
+    {
+      "name": "C02.concat",
+      "code": "W \"ab\"_\"cd\",\" \",\"x\"_1_y,!",
+      "why": "string concatenation with empty vars",
+      "expected": "Undefined local variable"
+    },
+    {
+      "name": "C03.data",
+      "code": "K ^CT3 W $D(^CT3),! S ^CT3=1 W $D(^CT3),! K ^CT3 S ^CT3(1)=1 W $D(^CT3),! S ^CT3=1 W $D(^CT3),!",
+      "why": "$DATA 0 / 1 / 10 / 11",
+      "expected": "0\n1\n10\n11"
+    },
+    {
+      "name": "C04.data-child",
+      "code": "K ^CT4 S ^CT4(1)=1 S ^CT4(1,2)=2 W $D(^CT4(1)),! W $D(^CT4(2)),!",
+      "why": "$DATA on a node with descendants",
+      "expected": "11\n0"
+    },
+    {
+      "name": "C05.piece",
+      "code": "S S=\"a,b,,d\" W $P(S,\",\"),\" \",$P(S,\",\",3),\" \",$P(S,\",\",2,3),!",
+      "why": "$PIECE single and range",
+      "expected": "a  b,"
+    },
+    {
+      "name": "C06.extract",
+      "code": "S S=\"abcdef\" W $E(S,2),\" \",$E(S,2,3),\" \",$E(S,5),!",
+      "why": "$EXTRACT single and range",
+      "expected": "b bc e"
+    },
+    {
+      "name": "C07.length",
+      "code": "S S=\"a,b,,d\" W $L(S),\" \",$L(S,\",\"),!",
+      "why": "$LENGTH default and by delimiter",
+      "expected": "6 4"
+    },
+    {
+      "name": "C08.globals",
+      "code": "K ^CT8 S ^CT8(\"a\")=1 S ^CT8(\"a\",\"b\")=2 W ^CT8(\"a\"),\" \",^CT8(\"a\",\"b\"),! K ^CT8(\"a\") W $D(^CT8(\"a\")),!",
+      "why": "global set / read / kill",
+      "expected": "1 2\n0"
+    },
+    {
+      "name": "C09.for",
+      "code": "S S=\"\" F I=1:1:5 S S=S_I W S,!",
+      "why": "FOR with step",
+      "expected": "1\n12\n123\n1234\n12345"
+    },
+    {
+      "name": "C10.for-list",
+      "code": "S S=\"\" F I=5,3,1 S S=S_I W S,!",
+      "why": "FOR with argument list",
+      "expected": "5\n53\n531"
+    },
+    {
+      "name": "C11.new-scope",
+      "code": "S X=1 N X S X=99 W X,!",
+      "why": "NEW scopes a variable",
+      "expected": "99"
+    },
+    {
+      "name": "C12.postcond",
+      "code": "S X=1 W:X=1 \"yes\",! W:X=2 \"no\",!",
+      "why": "post-conditional WRITE",
+      "expected": "yes"
+    },
+    {
+      "name": "C13.if-true",
+      "code": "S X=1 I X=1 W \"ok\",!",
+      "why": "IF with true $TEST",
+      "expected": "ok"
+    },
+    {
+      "name": "C14.divide-zero-guard",
+      "code": "W 10/2,\" \",10#3,!",
+      "why": "division and modulo",
+      "expected": "5 1"
+    },
+    {
+      "name": "C15.num-compare",
+      "code": "W (10>9),\" \",(9>10),\" \",(1=1),\" \",(1=2),!",
+      "why": "numeric relational operators",
+      "expected": "1 0 1 0"
+    },
+    {
+      "name": "C16.str-compare",
+      "code": "W (\"a\"<\"b\"),\" \",(\"b\"<\"a\"),\" \",(\"a\"=\"A\"),!",
+      "why": "#:DIVERGE rsm#11 -- relational < > on strings return 0; = is case-sensitive (ISO 7.4)",
+      "expected": "0 0 0"
+    },
+    {
+      "name": "C17.neg",
+      "code": "W -3,\" \",0-5,\" \",-(2+3),!",
+      "why": "unary and binary minus",
+      "expected": "-3 -5 -5"
+    },
+    {
+      "name": "C18.concat-empty",
+      "code": "W \"[\"_\"\"_\"]\",\" \",\"[\"_1_\"]\",!",
+      "why": "concatenation with empty string",
+      "expected": "[] [1]"
+    },
+    {
+      "name": "C19.intrinsic-chain",
+      "code": "W $L($E(\"abcdef\",2,4)),!",
+      "why": "nested intrinsic functions",
+      "expected": "3"
+    },
+    {
+      "name": "C20.write-numbers",
+      "code": "W 0,\" \",1,\" \",100,\" \",1.5,\" \",-0.5,!",
+      "why": "number output formatting",
+      "expected": "0 1 100 1.5 -.5"
+    },
+    {
+      "name": "C21.truthiness",
+      "code": "I \"abc\" W \"abc=T\",!\nI \"0.5\" W \"0.5=T\",!\nI \"0abc\" W \"0abc=T\",!\nI \"1abc\" W \"1abc=T\",!\nI \" 1\" W \"sp1=T\",!\nI \"1 \" W \"1sp=T\",!\nI \"-0\" W \"m0=T\",!\nI \"\" W \"empty=T\",!\nI \"0.0\" W \"0.0=T\",!\nI \"1E2\" W \"1E2=T\",!\nI -0.5 W \"m0.5=T\",!",
+      "why": "IF truthiness is cstringtob / to_num != 0, not non-empty string (runtime/util.c:108)",
+      "expected": "0.5=T\n1abc=T\n1sp=T\n1E2=T\nm0.5=T"
+    },
+    {
+      "name": "C22.mod-signs",
+      "code": "W -7#3,\" \",7#-3,\" \",-7#-3,\" \",7#3,\" \",10#3,\" \",-10#3,\" \",10#-3,\" \",-7.5#2,!",
+      "why": "M # is floored modulo, sign follows divisor (runtime/math.c runtime_div OPMOD)",
+      "expected": "2 -2 -1 1 1 2 -2 .5"
+    },
+    {
+      "name": "C23.enotation-cmp",
+      "code": "W (\"1E2\">99),\" \",(\"1E2\">101),!",
+      "why": "E notation is numeric for <> (HISTORIC_EOK on by default, util/memory.c:98)",
+      "expected": "1 0"
+    },
+    {
+      "name": "C24.eq-noncanonical",
+      "code": "W (\"1.0\"=1),\" \",(\"1E2\"=100),\" \",(\"+1\"=1),!",
+      "why": "#:DIVERGE rsm#11b -- = is memcmp on string forms, not numeric equality (ISO 7.4 does numeric compare when both numeric)",
+      "expected": "0 0 0"
+    },
+    {
+      "name": "C25.mstr-frac",
+      "code": "W 0.5,\" \",-0.5,\" \",0.25,\" \",-0.25,\" \",0.05,\" \",1.5,\" \",0,!",
+      "why": "M drops the fraction's leading zero whenever the integer part is 0",
+      "expected": ".5 -.5 .25 -.25 .05 1.5 0"
+    },
+    {
+      "name": "C26.pattern-classes",
+      "code": "W (\"a\"?1A),\" \",(\"1\"?1N),\" \",(\"x\"?1AN),\" \",(\"1\"?1AN),\" \",(\"!\"?1AN),\" \",(\"!\"?1AP),\" \",(\"5\"?1AP),!",
+      "why": "pattern class codes and two-letter alternation (A or N = alphanumeric)",
+      "expected": "1 1 1 1 0 1 0"
+    },
+    {
+      "name": "C27.pattern-counts",
+      "code": "W (\"\"?1A),\" \",(\"\"?.A),\" \",(\"abc\"?.A),\" \",(\"abc\"?3A),\" \",(\"abc\"?2.3A),\" \",(\"hello\"?1E),\" \",(\"hello\"?5E),\" \",(\"hello\"?1.5E),!",
+      "why": "pattern repetition counts: n, .m, n.m, . = 0..255",
+      "expected": "0 1 1 1 1 0 1 1"
+    },
+    {
+      "name": "C28.pattern-literal",
+      "code": "W (\"hello\"?1\"hello\"),\" \",(\"hello\"?1\"hell\"),\" \",(\"hihi\"?2\"hi\"),!",
+      "why": "quoted pattern literals",
+      "expected": "1 0 1"
+    },
+    {
+      "name": "C29.pattern-fullstring",
+      "code": "W (\"a\"?1A.AN),\" \",(\"ab\"?1A.AN),\" \",(\"a1\"?1A.AN),\" \",(\"a!\"?1A.AN),!",
+      "why": "1A.AN is one alpha then 0..255 alphanumerics; match must consume the whole string",
+      "expected": "1 1 1 0"
+    },
+    {
+      "name": "C30.prec-mul-add",
+      "code": "W 1+2*3,\" \",2*3+1,!",
+      "why": "left-to-right: 1+2*3 is (1+2)*3=9, not 7",
+      "expected": "9 7"
+    },
+    {
+      "name": "C31.prec-cat-rel",
+      "code": "W (1_2=12),\" \",(1=1_2),\" \",(\"x\"_1+1),!",
+      "why": "concat and relational share a level, left-assoc",
+      "expected": "1 12 1"
+    },
+    {
+      "name": "C32.prec-div-pow",
+      "code": "W 12/2/2,\" \",2**3**2,\" \",3-2-1,!",
+      "why": "left-assoc division and power",
+      "expected": "3 64 0"
+    },
+    {
+      "name": "C33.contains",
+      "code": "W (\"abc\"[\"b\"),\" \",(\"abc\"[\"x\"),\" \",(\"abc\"[\"\"),!",
+      "why": "contains [ ",
+      "expected": "1 0 1"
+    },
+    {
+      "name": "C34.follows-sorts",
+      "code": "W (\"b\"]\"a\"),\" \",(\"a\"]\"b\"),\" \",(\"b\"]]\"a\"),\" \",(\"a\"]]\"b\"),!",
+      "why": "follows ] and sorts-after ]] ",
+      "expected": "1 0 1 0"
+    },
+    {
+      "name": "C35.bool-ops",
+      "code": "W ('0),('1),(1&1),(1&0),(0!1),(0!0),!",
+      "why": "unary NOT, AND, OR",
+      "expected": "101010"
+    },
+    {
+      "name": "C36.bool-ops2",
+      "code": "W (1'&0),(0'&0),(1'!0),(0'!0),!",
+      "why": "NAND ' &  and NOR ' ! ",
+      "expected": "1101"
+    },
+    {
+      "name": "C37.not-rel",
+      "code": "W (\"a\"='\"a\"),(\"a\"'=\"b\"),(1'<2),(1'>2),!",
+      "why": "negated relational operators",
+      "expected": "0101"
+    },
+    {
+      "name": "C38.ascii",
+      "code": "W $A(\"A\"),\" \",$A(\"ABC\",2),\" \",$A(\"\"),\" \",$A(\"A\",5),!",
+      "why": "$ASCII 1-arg, 2-arg, empty, out of range -> -1",
+      "expected": "65 66 -1 -1"
+    },
+    {
+      "name": "C39.char",
+      "code": "W $C(65),\" \",$C(65,66),\" \",$C(256),\" \",$L($C(65,66)),!",
+      "why": "$CHAR single, multi, out of range -> empty",
+      "expected": "A AB  2"
+    },
+    {
+      "name": "C40.find",
+      "code": "W $F(\"abc\",\"b\"),\" \",$F(\"abc\",\"b\",2),\" \",$F(\"abc\",\"x\"),\" \",$F(\"abc\",\"\"),\" \",$F(\"abab\",\"ab\",2),!",
+      "why": "$FIND position after match, start, miss, empty needle, later match",
+      "expected": "3 3 0 1 5"
+    },
+    {
+      "name": "C41.get",
+      "code": "W \"[\",$G(X),\"]\",\"[\",$G(X,\"d\"),\"]\",! S X=1 W \"[\",$G(X),\"]\",\"[\",$G(X,\"d\"),\"]\",!",
+      "why": "$GET undefined/defined with default; lazy on undefined",
+      "expected": "[][d]\n[1][1]"
+    },
+    {
+      "name": "C42.justify",
+      "code": "W \"[\",$J(\"ab\",5),\"]\",\"[\",$J(3.14159,8,2),\"]\",\"[\",$J(\"abcdef\",3),\"]\",!",
+      "why": "$JUSTIFY 2-arg pad, 3-arg round, size < length",
+      "expected": "[   ab][    3.14][abcdef]"
+    },
+    {
+      "name": "C43.reverse",
+      "code": "W $RE(\"abc\"),\" \",$RE(\"\"),\" \",$RE(\"ab\"),!",
+      "why": "$REVERSE",
+      "expected": "cba  ba"
+    },
+    {
+      "name": "C44.translate",
+      "code": "W $TR(\"abc\",\"ab\",\"xy\"),\" \",$TR(\"abc\",\"ab\",\"x\"),\" \",$TR(\"abc\",\"ab\"),\" \",$TR(\"abc\",\"\"),!",
+      "why": "$TRANSLATE replace, shorten map, delete, empty map",
+      "expected": "xyc xc c abc"
+    },
+    {
+      "name": "C45.name",
+      "code": "S A(1,\"b\")=2 W $NA(A),\" \",$NA(A(1,\"b\")),\" \",$NA(A(1,\"b\"),1),!",
+      "why": "$NAME full and truncated to n subscripts",
+      "expected": "A A(1,\"b\") A(1)"
+    },
+    {
+      "name": "C46.increment",
+      "code": "K Z W $I(Z),\" \",$I(Z,2),\" \",Z,\" \",$I(Z,-1),\" \",Z,!",
+      "why": "$INCREMENT default 1, delta, store, negative delta",
+      "expected": "1 3 3 2 2"
+    },
+    {
+      "name": "C47.fnumber",
+      "code": "W $FN(1234.567,\",\",2),\" \",$FN(1234.5,\"\"),!",
+      "why": "$FNUMBER with comma code and empty code",
+      "expected": "1,234.57 1234.5"
+    },
+    {
+      "name": "C48.random-range",
+      "code": "S R=$RANDOM(5) I R<5 W \"ok\",!",
+      "why": "$RANDOM stays in 0..n-1",
+      "expected": "ok"
+    },
+    {
+      "name": "C49.set-extract",
+      "code": "S S=\"abcdef\" S $E(S,2,3)=\"XY\" W S,! S $E(S,1)=\"Z\" W S,!",
+      "why": "SET $EXTRACT range and single",
+      "expected": "aXYdef\nZXYdef"
+    },
+    {
+      "name": "C50.set-piece",
+      "code": "S P=\"a,b,c\" S $P(P,\",\",2)=\"Z\" W P,! S $P(P,\",\",2,3)=\"Y\" W P,!",
+      "why": "SET $PIECE single and range",
+      "expected": "a,Z,c\na,Y"
+    },
+    {
+      "name": "C51.query-fwd",
+      "code": "K ^QM S ^QM(1)=\"a\" S ^QM(2)=\"b\" S ^QM(2,1)=\"c\" S ^QM(2,1,\"x\")=\"d\" S ^QM(10)=\"e\" W $Q(^QM),\" \",$Q(^QM(2)),\" \",$Q(^QM(2,1)),\" \",$Q(^QM(2,1,\"x\")),\" \",$Q(^QM(10)),!",
+      "why": "$QUERY forward: parent before child, then next sibling",
+      "expected": "^QM(1) ^QM(2,1) ^QM(2,1,\"x\") ^QM(10) "
+    },
+    {
+      "name": "C52.query-back",
+      "code": "K ^QM S ^QM(1)=\"a\" S ^QM(2)=\"b\" S ^QM(2,1)=\"c\" S ^QM(2,1,\"x\")=\"d\" S ^QM(10)=\"e\" W $Q(^QM(2),-1),\" \",$Q(^QM(2,1),-1),\" \",$Q(^QM(10),-1),!",
+      "why": "$QUERY reverse",
+      "expected": "^QM(1) ^QM(2) ^QM(2,1,\"x\")"
+    },
+    {
+      "name": "C53.query-local",
+      "code": "K L S L(1)=\"x\" S L(1,2)=\"y\" S L(3)=\"z\" W $Q(L),\" \",$Q(L(1,2)),\" \",$Q(L(3)),!",
+      "why": "$QUERY on locals, bare name starts the walk",
+      "expected": "L(1) L(3) "
+    },
+    {
+      "name": "C54.qlength",
+      "code": "K ^QM S ^QM(2,1)=\"c\" W $QL(\"^A(1,2,3)\"),\" \",$QL(\"^A\"),\" \",$QL($NA(^QM(2,1))),!",
+      "why": "$QLENGTH of a closed name string",
+      "expected": "3 0 2"
+    },
+    {
+      "name": "C55.qsubscript",
+      "code": "W $QS(\"^A(1,2,3)\",0),\" \",$QS(\"^A(1,2,3)\",1),\" \",$QS(\"^A(1,2,3)\",2),\" \",$QS(\"^A(1,2,3)\",3),\" \",$QS(\"^A(1,2,3)\",4),!",
+      "why": "$QSUBSCRIPT: 0 is the naked name, 1..n the subscripts",
+      "expected": "^A 1 2 3 "
+    },
+    {
+      "name": "C56.merge-global",
+      "code": "K ^MD S ^MD(1)=\"a\" S ^MD(1,2)=\"b\" S ^MD(1,2,3)=\"c\" S ^MD(2)=\"d\" K ^ME MERGE ^ME=^MD W $D(^ME(1)),\" \",$D(^ME(1,2)),\" \",$D(^ME(1,2,3)),\" \",$D(^ME(2)),\" \",$D(^ME),!",
+      "why": "MERGE deep-copies a global subtree",
+      "expected": "11 11 1 1 10"
+    },
+    {
+      "name": "C57.merge-values",
+      "code": "K ^MD S ^MD(1,2,3)=\"c\" S ^MD(2)=\"d\" K ^ME MERGE ^ME=^MD W ^ME(1,2,3),\" \",^ME(2),!",
+      "why": "MERGE copies values",
+      "expected": "c d"
+    },
+    {
+      "name": "C58.merge-subtree",
+      "code": "K ^MD S ^MD(1)=\"a\" S ^MD(1,2)=\"b\" S ^MD(1,2,3)=\"c\" S ^MD(2)=\"d\" K ^MF(1) MERGE ^MF(1)=^MD(1) W $D(^MF(1)),\" \",$D(^MF(1,2)),\" \",$D(^MF(2)),!",
+      "why": "MERGE from a subtree into a target node",
+      "expected": "11 11 0"
+    },
+    {
+      "name": "C59.merge-local",
+      "code": "S A(1)=\"p\" S A(1,2)=\"q\" K B MERGE B=A W $D(B(1)),\" \",$D(B(1,2)),\" \",B(1,2),!",
+      "why": "MERGE locals",
+      "expected": "11 1 q"
+    },
+    {
+      "name": "C60.merge-overlay",
+      "code": "K ^X S ^X(1)=\"old\" S ^X(1,2)=\"old2\" S ^X(9)=\"keep\" K ^Y S ^Y(1)=\"new\" S ^Y(1,2,3)=\"new3\" MERGE ^X(1)=^Y(1) W $D(^X(1)),\" \",$D(^X(1,2)),\" \",$D(^X(1,2,3)),\" \",$D(^X(9)),\" \",^X(1),\" \",^X(1,2),\" \",^X(1,2,3),!",
+      "why": "MERGE overlays; dest children not in src are kept",
+      "expected": "11 11 1 1 new old2 new3"
+    },
+    {
+      "name": "C61.ind-name",
+      "code": "S X=\"Y\" S Y=42 W @X,!",
+      "why": "name indirection: @X evaluates X then uses it as a reference",
+      "expected": "42"
+    },
+    {
+      "name": "C62.ind-closed",
+      "code": "S A(1)=\"hello\" S R=\"A(1)\" W @R,!",
+      "why": "closed-reference indirection",
+      "expected": "hello"
+    },
+    {
+      "name": "C63.ind-computed",
+      "code": "S A(1)=\"hello\" S N=\"A\" W @(N_\"(1)\"),!",
+      "why": "computed indirection",
+      "expected": "hello"
+    },
+    {
+      "name": "C64.ind-expr",
+      "code": "S Q=\"1+1\" W @Q,!",
+      "why": "expression indirection evaluates the string as an M expression",
+      "expected": "2"
+    },
+    {
+      "name": "C65.ind-args",
+      "code": "S LIST=\"1,2,3\" W \"C65|\",@LIST,!",
+      "why": "argument indirection: the string is reparsed as command arguments",
+      "expected": "C65|123"
+    },
+    {
+      "name": "C66.ind-set",
+      "code": "S W2=\"Y\" S Y=1 S @W2=99 W Y,!",
+      "why": "indirect SET target",
+      "expected": "99"
+    },
+    {
+      "name": "C67.ind-intrinsic",
+      "code": "K L S L(1)=1 S L(2)=2 S IDX=\"L(1)\" W $D(@IDX),\" \",$O(@IDX),!",
+      "why": "$DATA/$ORDER through indirection",
+      "expected": "1 2"
+    },
+    {
+      "name": "C68.ind-global",
+      "code": "K ^G S ^G(2)=\"gv\" S P=\"^G(2)\" W @P,!",
+      "why": "global indirection",
+      "expected": "gv"
+    },
+    {
+      "name": "C69.stack-basic",
+      "code": "W $ST(0),\" \",$ST(-1),\" \",$STACK,!",
+      "why": "$STACK/$ST in direct mode",
+      "expected": "RUN 0 0"
+    },
+    {
+      "name": "C70.stack-place",
+      "code": "W $ST(0,\"PLACE\"),!",
+      "why": "$ST level-0 PLACE is @ in direct mode",
+      "expected": "@"
+    },
+    {
+      "name": "C71.text-empty",
+      "code": "W $TEXT(+1),\" \",$TEXT(FOO),!",
+      "why": "$TEXT with no routine loaded is empty; bare $TEXT is undefined",
+      "expected": " "
+    },
+    {
+      "name": "C72.stack-deep",
+      "code": "W $ST(1),\"|\",$ST(2),!",
+      "why": "$ST of empty levels is empty",
+      "expected": "|"
+    },
+    {
+      "name": "C73.ind-levels",
+      "code": "S X=\"Y\" S Y=\"Z\" S Z=7 W @X,\" \",@@X,!",
+      "why": "@ is one expression indirection; @@ is two",
+      "expected": "Z 7"
+    },
+    {
+      "name": "C74.ind-parent-undef",
+      "code": "K A S A(1)=\"u\" S A(2)=\"v\" S N=\"A\" W @N,!",
+      "why": "@ of a name that has only descendants is undefined as a value",
+      "expected": "Undefined local variable"
+    },
+    {
+      "name": "C75.ind-kill",
+      "code": "K A S A(1)=\"t\" S S2=\"A(1)\" K @S2 W $D(A(1)),!",
+      "why": "KILL through indirection",
+      "expected": "0"
+    },
+    {
+      "name": "C76.ind-prec",
+      "code": "S W3=\"1\" W @W3+1,!",
+      "why": "@ binds as a primary: @W3+1 is (@W3)+1",
+      "expected": "2"
+    },
+    {
+      "name": "C77.horolog-fmt",
+      "code": "S H=$H I $L(H,\",\")=2 W \"fmt\",!",
+      "why": "$HOROLOG is day,sec (Vhorolog)",
+      "expected": "fmt"
+    },
+    {
+      "name": "C78.horolog-eq-name",
+      "code": "S A=$HOROLOG I A=$H W \"same\",!",
+      "why": "$HOROLOG and $H are the same value",
+      "expected": "same"
+    },
+    {
+      "name": "C79.horolog-range",
+      "code": "S H=$H S D=$P(H,\",\",1) S S=$P(H,\",\",2) I (D>0)&(S>0)&(S<86401) W \"ok\",!",
+      "why": "day>0 and 0<sec<86401",
+      "expected": "ok"
+    },
+    {
+      "name": "C80.hang-zero",
+      "code": "W \"pre\",! HANG 0 W \"post\",!",
+      "why": "HANG 0 continues immediately (OPHANG)",
+      "expected": "pre\npost"
+    },
+    {
+      "name": "C81.bare-q-special",
+      "code": "W $Q,!",
+      "why": "bare $Q is $QUIT special (0 in direct mode)",
+      "expected": "0"
+    },
+    {
+      "name": "C82.q-arity-query",
+      "code": "K ^CQ S ^CQ(1)=1 S X=\"\" W $Q(^CQ(X)),!",
+      "why": "$Q(...) is $QUERY, not $QUIT",
+      "expected": "^CQ(1)"
+    },
+    {
+      "name": "C83.select-basic",
+      "code": "W $S(0:1,1:2,1:3),!",
+      "why": "$SELECT returns first true pair value",
+      "expected": "2"
+    },
+    {
+      "name": "C84.select-first-true",
+      "code": "W $S(1:10,1:20),!",
+      "why": "$SELECT first true wins",
+      "expected": "10"
+    },
+    {
+      "name": "C85.select-branch",
+      "code": "S X=2 W $S(X=1:\"one\",X=2:\"two\",1:\"other\"),!",
+      "why": "$SELECT with default branch",
+      "expected": "two"
+    },
+    {
+      "name": "C86.next-forward",
+      "code": "K ^CN S ^CN(1)=1,^CN(2)=2 S K=1 W $NEXT(^CN(K)),!",
+      "why": "$NEXT is forward $ORDER (ISO; RSM needs HISTORIC_DNOK)",
+      "expected": "2"
+    },
+    {
+      "name": "C87.next-abbr-name",
+      "code": "K ^CN S ^CN(1)=1,^CN(2)=2 S K=1 W $N(^CN(K)),!",
+      "why": "$N is $NEXT; $NA is $NAME (dollar.c:624)",
+      "expected": "2"
+    },
+    {
+      "name": "C88.name-na",
+      "code": "S A(1)=1 W $NA(A(1)),!",
+      "why": "$NA is $NAME not $NEXT",
+      "expected": "A(1)"
+    },
+    {
+      "name": "C89.xy-init",
+      "code": "W $X,\" \",$Y,!",
+      "why": "$X/$Y start at 0 0",
+      "expected": "0 0"
+    },
+    {
+      "name": "C90.xy-after-write",
+      "code": "W \"abc\" W $X,!",
+      "why": "$X advances by output length",
+      "expected": "abc\n3"
+    },
+    {
+      "name": "C91.xy-after-nl",
+      "code": "W \"abc\",! W $X,\" \",$Y,!",
+      "why": "newline resets $X and increments $Y",
+      "expected": "abc\n0 1"
+    },
+    {
+      "name": "C92.xy-set-x",
+      "code": "W \"abc\" S $X=0 W $X,!",
+      "why": "SET $X assigns cursor",
+      "expected": "abc\n0"
+    },
+    {
+      "name": "C93.select-no-true",
+      "code": "W $S(0:1),!",
+      "why": "$SELECT with no true pair errors (M4)",
+      "expected": "No true condition in $SELECT"
+    },
+    {
+      "name": "C94.do-tag",
+      "code": "MAIN D FOO\n Q\nFOO W \"in-foo\",!\n Q",
+      "why": "DO label then QUIT returns",
+      "expected": "in-foo"
+    },
+    {
+      "name": "C95.goto-tag",
+      "code": "MAIN G FOO\n W \"skipped\",!\n Q\nFOO W \"at-foo\",!",
+      "why": "GOTO label skips following lines",
+      "expected": "at-foo"
+    },
+    {
+      "name": "C96.do-argless-dots",
+      "code": "MAIN D\n . W \"in-block\",!\n W \"after\",!",
+      "why": "argless DO runs dotted block then continues",
+      "expected": "in-block\nafter"
+    },
+    {
+      "name": "C97.xecute",
+      "code": "MAIN X \"S X=42\" W X,!",
+      "why": "XECUTE runs string as M",
+      "expected": "42"
+    },
+    {
+      "name": "C98.xecute-write",
+      "code": "MAIN X \"W \"\"hi\"\",!\"",
+      "why": "XECUTE with quoted WRITE",
+      "expected": "hi"
+    },
+    {
+      "name": "C99.do-args",
+      "code": "MAIN D ADD(2,3)\n Q\nADD(A,B) W A+B,!\n Q",
+      "why": "DO label with formal args",
+      "expected": "5"
+    },
+    {
+      "name": "C100.do-postcond",
+      "code": "MAIN D:0 FOO\n D:1 FOO\n Q\nFOO W \"foo\",!\n Q",
+      "why": "DO post-conditional",
+      "expected": "foo"
+    },
+    {
+      "name": "C101.goto-postcond",
+      "code": "MAIN G:0 FOO\n G:1 BAR\n Q\nFOO W \"no\",!\n Q\nBAR W \"yes\",!",
+      "why": "GOTO post-conditional",
+      "expected": "yes"
+    },
+    {
+      "name": "C102.nested-do",
+      "code": "MAIN D OUTER\n Q\nOUTER W \"o1\",! D INNER W \"o2\",!\n Q\nINNER W \"i\",!\n Q",
+      "why": "nested DO return order",
+      "expected": "o1\ni\no2"
+    },
+    {
+      "name": "C103.do-routine",
+      "code": "MAIN W \"start\",! D ^SUB W \"end\",!",
+      "routines": {
+        "SUB": "SUB W \"in-sub\",!\n Q"
+      },
+      "why": "DO ^routine call",
+      "expected": "start\nin-sub\nend"
+    },
+    {
+      "name": "C104.do-tag-routine",
+      "code": "MAIN D ENTRY^SUB W \"!\",!",
+      "routines": {
+        "SUB": "ENTRY W \"entry\",!\n Q\nOTHER W \"other\",!\n Q"
+      },
+      "why": "DO tag^routine",
+      "expected": "entry\n!"
+    },
+    {
+      "name": "C105.extrinsic-routine",
+      "code": "MAIN W $$ADD^SUB(2,3),!",
+      "routines": {
+        "SUB": "ADD(A,B) Q A+B"
+      },
+      "why": "$$fn^routine extrinsic",
+      "expected": "5"
+    },
+    {
+      "name": "C106.extrinsic-same",
+      "code": "MAIN W $$ADD(2,3),!\n Q\nADD(A,B) Q A+B",
+      "why": "$$fn same-routine extrinsic",
+      "expected": "5"
+    },
+    {
+      "name": "C107.do-routine-args",
+      "code": "MAIN D ^SUB(\"hi\")\n Q",
+      "routines": {
+        "SUB": "SUB(S) W S,!\n Q"
+      },
+      "why": "DO ^routine with formals",
+      "expected": "hi"
+    },
+    {
+      "name": "C108.lock-simple",
+      "code": "MAIN L +^L1 W \"got\",! L -^L1 W \"done\",!",
+      "why": "LOCK +global then -global",
+      "expected": "got\ndone"
+    },
+    {
+      "name": "C109.lock-local",
+      "code": "MAIN L +X W \"got\",!",
+      "why": "LOCK +local",
+      "expected": "got"
+    },
+    {
+      "name": "C110.lock-relock",
+      "code": "MAIN L +X:0 W \"got\",! L +X:0 W \"twice\",!",
+      "why": "LOCK +ref:timeout re-lock same process",
+      "expected": "got\ntwice"
+    },
+    {
+      "name": "C111.lock-minus",
+      "code": "MAIN L +X L -X W \"off\",!",
+      "why": "LOCK -ref unlocks",
+      "expected": "off"
+    },
+    {
+      "name": "C112.lock-comma",
+      "code": "MAIN L +X,Y W \"both\",!",
+      "why": "LOCK +a,b",
+      "expected": "both"
+    },
+    {
+      "name": "C113.etrap-set-get",
+      "code": "S $ETRAP=\"W \"\"T\"\",!\" W $ETRAP,!",
+      "expected": "W \"T\",!",
+      "why": "$ETRAP SET/GET"
+    },
+    {
+      "name": "C114.ecode-set-get",
+      "code": "S $ECODE=\",E1\" W $ECODE,!",
+      "expected": ",E1",
+      "why": "$ECODE SET/GET"
+    },
+    {
+      "name": "C115.etrap-fire",
+      "code": "S $ETRAP=\"W \"\"T\"\",!\" S Z=NOPE W \"after\",!",
+      "expected": "T\nafter",
+      "why": "$ETRAP runs on undefined local"
+    },
+    {
+      "name": "C116.etrap-ecode",
+      "code": "S $ECODE=\"\" S $ETRAP=\"S $ECODE=\"\"E\"\" W \"\"T\"\",!\" S Z=NOPE W \"ec=\",$ECODE,!",
+      "expected": "T\nec=E",
+      "why": "trap can SET $ECODE"
+    },
+    {
+      "name": "C117.view-noop",
+      "code": "VIEW 1 W \"ok\",!",
+      "expected": "ok",
+      "why": "VIEW accepted (impl-defined)"
+    },
+    {
+      "name": "C118.device-special",
+      "code": "W $DEVICE,!",
+      "expected": "\n",
+      "why": "$DEVICE empty on principal"
+    },
+    {
+      "name": "C119.storage-system",
+      "code": "W $STORAGE>0,\" \",($SYSTEM'=\"\"),!",
+      "expected": "1 1",
+      "why": "$STORAGE numeric, $SYSTEM non-empty"
+    },
+    {
+      "name": "C120.io-principal",
+      "code": "W $IO,\" \",$PRINCIPAL,!",
+      "expected": "0 0",
+      "why": "$IO/$PRINCIPAL start at 0"
+    },
+    {
+      "name": "C121.write-char",
+      "code": "W *65,!",
+      "expected": "A",
+      "why": "WRITE *n ASCII"
+    },
+    {
+      "name": "C122.write-char-nl",
+      "code": "W \"ab\",*10,\"cd\",!",
+      "expected": "ab\ncd",
+      "why": "WRITE *10 is newline"
+    },
+    {
+      "name": "C123.write-col",
+      "code": "W \"x\",?5,\"y\",!",
+      "expected": "x    y",
+      "why": "WRITE ?n column pad"
+    },
+    {
+      "name": "C124.write-ff",
+      "code": "W \"a\",#,\"b\",!",
+      "expected": "a\nb",
+      "why": "WRITE # form feed (line break)"
+    },
+    {
+      "name": "C125.ztrap-set-get",
+      "code": "S $ZTRAP=\"W \"\"Z\"\",!\" W $ZTRAP,!",
+      "expected": "W \"Z\",!",
+      "why": "$ZTRAP SET/GET"
+    },
+    {
+      "name": "C126.zversion-zjob",
+      "code": "W ($ZVERSION'=\"\"),\" \",$ZJOB,!",
+      "expected": "1 1",
+      "why": "$ZVERSION non-empty, $ZJOB=1"
+    },
+    {
+      "name": "C127.zlevel-zsystem",
+      "code": "W $ZLEVEL,\" \",($ZSYSTEM'=\"\"),!",
+      "expected": "0 1",
+      "why": "$ZLEVEL, $ZSYSTEM non-empty"
+    },
+    {
+      "name": "C128.zeof",
+      "code": "W $ZEOF,!",
+      "expected": "0",
+      "why": "$ZEOF at principal"
+    }
+  ]
 }

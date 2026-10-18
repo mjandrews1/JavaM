@@ -11,7 +11,8 @@ import java.util.stream.Stream;
  * FileMan corpus walk (jvmumps#32) — parse every *.m under FILEMAN_CORPUS,
  * classify failures as ENGINE GAP / DIALECT / DATA. Read-only; no store writes.
  *
- * Usage: jvmumps.FileManCorpusWalk [FILEMAN_CORPUS]
+ * Usage: jvmumps.FileManCorpusWalk [--native] [FILEMAN_CORPUS]
+ *   --native  run through MFrontend (native mJVM) instead of LineRoutine
  * Exit 0 always (report is the product). Set WALK_LIMIT to cap files (0 = all).
  */
 public final class FileManCorpusWalk {
@@ -22,14 +23,20 @@ public final class FileManCorpusWalk {
     }
 
     public static void main(String[] args) throws Exception {
-        String base = args.length > 0 && Files.isDirectory(Path.of(args[0])) ? args[0] : root();
+        boolean nativeMode = false;
+        String base = root();
+        for (String a : args) {
+            if (a.equals("--native")) nativeMode = true;
+            else if (Files.isDirectory(Path.of(a))) base = a;
+        }
         if (!Files.isDirectory(Path.of(base))) {
             System.out.println("## FileMan corpus walk: SKIP (no FILEMAN_CORPUS dir: " + base + ")");
             return;
         }
         int limit = Integer.parseInt(System.getenv().getOrDefault("WALK_LIMIT", "0"));
+        String engine = nativeMode ? "MFrontend (native mJVM)" : "LineRoutine.parseRoutine (JavaM)";
         System.out.println("## FileMan corpus walk (FILEMAN_CORPUS=" + base + ")");
-        System.out.println("### parse via LineRoutine.parseRoutine (JavaM) — read-only");
+        System.out.println("### parse via " + engine + " — read-only");
         System.out.println();
 
         List<Path> files = new ArrayList<>();
@@ -56,18 +63,28 @@ public final class FileManCorpusWalk {
                 continue;
             }
             try {
-                List<LineState.RtLine> lines = LineRoutine.parseRoutine(code);
-                int nlab = 0;
-                for (LineState.RtLine tl : lines) {
-                    if (tl.tag != null && !tl.tag.isEmpty()) {
-                        nlab++;
+                if (nativeMode) {
+                    var ir = new mjvm.compiler.MFrontend().compileProgram(code);
+                    if (ir.isEmpty()) {
+                        empty++;
+                        fails.add(rel(base, p) + "  NO OPS (DIALECT)");
+                    } else {
+                        ok++;
                     }
-                }
-                if (nlab == 0) {
-                    empty++;
-                    fails.add(rel(base, p) + "  NO LABELS (DIALECT)");
                 } else {
-                    ok++;
+                    List<LineState.RtLine> lines = LineRoutine.parseRoutine(code);
+                    int nlab = 0;
+                    for (LineState.RtLine tl : lines) {
+                        if (tl.tag != null && !tl.tag.isEmpty()) {
+                            nlab++;
+                        }
+                    }
+                    if (nlab == 0) {
+                        empty++;
+                        fails.add(rel(base, p) + "  NO LABELS (DIALECT)");
+                    } else {
+                        ok++;
+                    }
                 }
             } catch (Exception e) {
                 fail++;

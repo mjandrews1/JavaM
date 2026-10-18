@@ -24,7 +24,7 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 
 7 of 8 upstream-bug cases already diverge ISO-correctly (T11/T12/T15/C16). Remaining work = **35 real gaps** + **1 ISO flip** (`C24.eq-noncanonical`).
 
-### Wave J12 — Symbols, literals, quoted strings ✅ · jvmumps#7
+### Wave J12 — Symbols, literals, quoted strings ✅ · JavaM#7
 
 **Foundation** for the catch-up: name tokens (local/global/`%`/`$`), numeric literals (int/frac/exp + mstr display), quoted strings (empty, embedded `""`, concat). Covered by `jvmumps.J12SymLitSmoke` (49 cases, in `make smoke`).
 
@@ -37,7 +37,7 @@ where the 8 misses are **exactly** the known RSM upstream-bug set (ISO-correct d
 
 **Status:** suite green. Remaining symbol work is **indirection `@`** (below) and the parity clusters J13–J17.
 
-### Wave J12b — Indirection `@` ✅ · jvmumps#7
+### Wave J12b — Indirection `@` ✅ · JavaM#7
 
 | Case | Want | Status |
 |------|------|--------|
@@ -55,7 +55,7 @@ Also green: C61–C64, C68, C73, C76 (name/closed/computed/expr/global/levels/pr
 
 Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 
-### Wave J13 — DO / GOTO / XECUTE / extrinsic ✅ · jvmumps#8
+### Wave J13 — DO / GOTO / XECUTE / extrinsic ✅ · JavaM#8
 
 | Case | Want | Status |
 |------|------|--------|
@@ -71,7 +71,7 @@ Gate: `java jvmumps.CorpusScore conformance.json 'C6'` all ind-* MATCH.
 **Impl:** tagged-routine loader · DO stack with mid-line resume · GOTO · XECUTE · `$$tag` extrinsics · `readExpr` stops at caller's `)`.
 External-routine cases (C103–C105, C107, `^SUB`) still open — need `routines` in CorpusCase.
 
-### Wave J14 — Traps + `$Z*` specials ✅ · jvmumps#9
+### Wave J14 — Traps + `$Z*` specials ✅ · JavaM#9
 
 | Case | Want | Status |
 |------|------|--------|
@@ -88,7 +88,7 @@ External-routine cases (C103–C105, C107, `^SUB`) still open — need `routines
 
 Gate: C113–C128 MATCH.
 
-### Wave J15 — WRITE device params + `$X`/`$Y` ✅ · jvmumps#10
+### Wave J15 — WRITE device params + `$X`/`$Y` ✅ · JavaM#10
 
 | Case | Want | Status |
 |------|------|--------|
@@ -105,7 +105,7 @@ Also green: C91 xy-after-nl.
 
 Gate: C90, C92, C121–C124 MATCH.
 
-### Wave J16 — FOR/NEXT + `$STACK`/`$TEXT` + SET `$EXTRACT` ✅ · jvmumps#11
+### Wave J16 — FOR/NEXT + `$STACK`/`$TEXT` + SET `$EXTRACT` ✅ · JavaM#11
 
 | Case | Want |
 |------|------|
@@ -121,7 +121,7 @@ Gate: C49, C69–C71, C81, C86–C87 MATCH. **All ✅.**
 
 **Impl:** `$NEXT`/`$N` (forward `$ORDER`) · `$ST`/`$STACK` direct-mode frame · `$TEXT` name-arg (no var lookup) · `SET $EXTRACT` writeback · bare `$Q` = `$QUIT`.
 
-### Wave J17 — ISO `=` flip ✅ · jvmumps#12
+### Wave J17 — ISO `=` flip ✅ · JavaM#12
 
 | Case | Today | Target |
 |------|-------|--------|
@@ -138,7 +138,7 @@ After J17 the miss set must be **exactly**:
 
 128 ERR are `mJVM M2: command not in compiled subset` — expand `MFrontend`/`BytecodeEmitter`/`MRuntime`. 3 MISS are numeric semantics.
 
-### Wave M10 — control + data commands ✅ · jvmumps#13
+### Wave M10 — control + data commands ✅ · JavaM#13
 
 Compile and execute:
 - `IF` / `ELSE` / `$TEST` (postcond too)
@@ -147,7 +147,7 @@ Compile and execute:
 
 Gate: subset no longer throws on `I`/`E`/`F`/`N`/`K`/`M`. **✅ met** — 8/3/128 → 19/5/115.
 
-### Wave M11 — calls, XECUTE, intrinsics, indirection ✅ · jvmumps#14
+### Wave M11 — calls, XECUTE, intrinsics, indirection ✅ · JavaM#14
 
 - `DO`/`GOTO`/`$$`/`XECUTE` with args, postcond, nesting (share J13 semantics)
 - Intrinsics `$DATA` `$ORDER` `$GET` `$NAME` `$QUERY*` `$SELECT` `$CASE` `$HOROLOG` `$STACK` `$TEXT` `$X` `$Y`
@@ -156,7 +156,7 @@ Gate: subset no longer throws on `I`/`E`/`F`/`N`/`K`/`M`. **✅ met** — 8/3/12
 
 Gate: ERR count driven to 0 on the 139-case corpus. **✅ met** — 19/5/115 → **84/55/0**.
 
-### Wave M12 — numeric semantics + parity gate ✅ · jvmumps#15
+### Wave M12 — numeric semantics + parity gate ✅ · JavaM#15
 
 | Case | Today | Want |
 |------|-------|------|
@@ -187,19 +187,19 @@ J12–J17 are independent of mJVM except where mJVM **shares semantics** (reuse 
 
 | Wave | Issue |
 |------|-------|
-| J12 symbols/literals/quoted strings | ✅ smoke | jvmumps#7 |
-| J12b indirection `@` | ✅ 102/37/0 | jvmumps#7 |
-| J13 DO/GOTO/XECUTE/$$ | ✅ 111/28/0 | jvmumps#8 |
-| J14 traps + `$Z*` | ✅ 119/20/0 | jvmumps#9 |
-| J15 WRITE + `$X$Y` | ✅ 125/14/0 | jvmumps#10 |
-| J16 FOR/`$STACK`/SET `$E` | ✅ 132/7/0 | jvmumps#11 |
-| J17 ISO `=` flip | ✅ **131/8/0** | jvmumps#12 |
-| J17 ISO `=` flip | jvmumps#12 |
-| M10 IF/ELSE/FOR/NEW/KILL/MERGE | ✅ 19/5/115 | jvmumps#13 |
-| M11 calls/intrinsics | jvmumps#14 |
-| M12 parity gate | ✅ **131/8/0** | jvmumps#15 |
+| J12 symbols/literals/quoted strings | ✅ smoke | JavaM#7 |
+| J12b indirection `@` | ✅ 102/37/0 | JavaM#7 |
+| J13 DO/GOTO/XECUTE/$$ | ✅ 111/28/0 | JavaM#8 |
+| J14 traps + `$Z*` | ✅ 119/20/0 | JavaM#9 |
+| J15 WRITE + `$X$Y` | ✅ 125/14/0 | JavaM#10 |
+| J16 FOR/`$STACK`/SET `$E` | ✅ 132/7/0 | JavaM#11 |
+| J17 ISO `=` flip | ✅ **131/8/0** | JavaM#12 |
+| J17 ISO `=` flip | JavaM#12 |
+| M10 IF/ELSE/FOR/NEW/KILL/MERGE | ✅ 19/5/115 | JavaM#13 |
+| M11 calls/intrinsics | JavaM#14 |
+| M12 parity gate | ✅ **131/8/0** | JavaM#15 |
 
-Do not reopen closed jvmumps#1–#6. Do not reopen `rsm#20`.
+Do not reopen closed JavaM#1–#6. Do not reopen `rsm#20`.
 
 ## Verification
 

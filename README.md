@@ -1,4 +1,4 @@
-# jvmumps — JvMumps + mJVM
+# JavaM — JvMumps + mJVM
 
 **Last updated:** 2026-10-05  
 **Status:** project charter and critical path (implementation in progress alongside PyMumps/C3Mumps).  

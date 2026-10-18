@@ -105,6 +105,28 @@ does). That shape now works on both engines.
 
 ---
 
+## Tier B corpus run — VistA FOIA (2026-10-17)
+
+**Corpus:** U02 `~/vista-foia/VistA-M-master` — 33,951 `.m` routines.
+**Tool:** `jvmumps.FileManCorpusWalk [--native]`
+
+| Engine | OK | DATA | DIALECT | ENGINE GAP |
+|---|---|---|---|---|
+| JavaM (`LineRoutine`) | 33,942 | 7 | 2 | **0** |
+| Native mJVM (`MFrontend`) | 33,944 | 7 | 0 | **0** |
+
+**DATA (7):** non-UTF-8 encoding — DVBCQAN2, DVBCQWR2, YTSFTND, RMPR4P23, RMPR9P23, RMPRP23, TIULC.
+
+**DIALECT (2):** no labels — A7R3.m, X.m. Native mJVM compiles these fine (reports 0 DIALECT).
+
+**ENGINE GAPs found and fixed:**
+- `ifJmp0`/`endJmps` stale across lines in `compileRoutine` (556 failures)
+- DO/GOTO patch offset out-of-bounds after formals BIND shift (173 failures)
+
+Both fixed in `MFrontend.java`. **Tier B: 0 ENGINE GAPs on both engines.**
+
+---
+
 ## Repro
 
 ```sh
