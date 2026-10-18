@@ -466,6 +466,10 @@ public final class ExprEval {
                     // J13 extrinsic $$tag(args) — may include pass-by-ref .var
                     List<MValue> args = new ArrayList<>();
                     List<String> byrefs = new ArrayList<>();
+                    // consume ^routine if present ($$TAG^ROUTINE syntax)
+                    if (peek().kind == ExprTokens.Kind.GLOBAL && peek().text.startsWith("^")) {
+                        i++;
+                    }
                     if (peek().kind == ExprTokens.Kind.LP) {
                         i++;
                         argList(args, byrefs);
@@ -473,7 +477,11 @@ public final class ExprEval {
                             i++;
                         }
                     }
-                    return env.extrinsic(t.text.substring(2), args, byrefs);
+                    // $$TAG^ROUTINE syntax — strip ^routine part
+                    String fn = t.text.substring(2);
+                    int caret = fn.indexOf('^');
+                    if (caret > 0) fn = fn.substring(0, caret);
+                    return env.extrinsic(fn, args, byrefs);
                 }
                 if (t.text.startsWith("$")) {
                     String un = t.text.toUpperCase();

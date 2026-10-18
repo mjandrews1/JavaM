@@ -190,7 +190,11 @@ public final class IrMachine {
                         for (int k = argc - 1; k >= 0; k--) argv[k] = vals[--sp];
                         vals[sp++] = rt.callExtrinsic(op.name.substring(1), argv);
                     } else {
-                        rt.call(op.name, op.iarg);
+                        // DO tag — pop argc args, run tag via nested program
+                        int argc = op.iarg;
+                        MValue[] argv = new MValue[argc];
+                        for (int k = argc - 1; k >= 0; k--) argv[k] = vals[--sp];
+                        rt.call(op.name, argv);
                     }
                 }
                 case Ir.OPEN -> {

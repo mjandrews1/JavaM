@@ -7,6 +7,44 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
+## [0.9.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.9.0) — 2026-10-18
+
+**GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.9.0
+
+### Added
+- **MeshGraph DS libraries** — `src/main/m/lib/`: HMAP (hash map), HSTACK (LIFO), HQUEUE (FIFO), HHEAP (min-heap), HPQUE (priority queue). Portable M, ISO-M only.
+- **REPL** — `jvmumps.Repl` (JavaM) and `mjvm.cli.Repl` (mJVM). Interactive M shell with `/help` `/load` `/tags` `/reset` `/history` `/quit`. `REPL_INIT` env.
+- **`MControl.dfy`** — DO/GOTO/trap/WRITE control-flow contracts (m-semantics). 12 postconditional DO lemmas.
+- **Tier B corpus walk** — `FileManCorpusWalk --native` for 33,951 FOIA routines.
+- **Tier C comparison** — `TierCCompare` dual-engine runtime diff.
+
+### Fixed
+- **GAP-1** subscript canonicalisation (`MRuntime.subOf` uses `ExprEval.mstr`).
+- **GAP-2** `$$` extrinsic after tagged prelude (`;` comment stripping in `MFrontend.compile`).
+- **`::` postconditional** syntax in `MFrontend` M3 DO path.
+- **`TAG^ROUTINE` syntax** — strip `^routine` in DO and `$$` handlers.
+- **DO args** — pop from stack and pass to callee (was passing empty).
+- **`pathOf` variable subscripts** — evaluate variables, not just literals.
+- **Argumentless `D`** — no-op (dotted block continues inline).
+- **`compileDoGotoRet`** — emit `CALL` for external targets (was silent drop).
+- **`ifJmp0`/`endJmps`** per-line clear in `compileRoutine`.
+- **DO/GOTO patch** bounds check after formals BIND shift.
+- **WRITE variable collision** — `W X` writes variable X, not WRITE then XECUTE.
+- **`fireTrap()` returns boolean** — `IrMachine` rethrows when no trap set.
+- **Error message alignment** — `No such label 'X'` (was `Extrinsic $$X not available`).
+
+### Contract
+- corpus: **135 / 4 / 0** (was 131/8/0). 4 placeholders filled, 4 RSM DIVERGENCES documented.
+- Dafny: 261 verified, 0 errors (MSemantics 103 + MPattern 37 + MControl 121).
+
+### Known gaps
+- 4 corpus misses are RSM DIVERGENCES (`T11d`, `T15`, `C16`, `C24`) — documented with `#:DIVERGE`.
+- Byref args (`.var`) in `$$` extrinsic not fully handled — `DsLibSmoke` avoids them.
+- VistA smoke execute: 130/400 OK on sample, 126 missing host services (Kernel globals, FileMan).
+- Perf baseline not yet recorded for v0.9.0.
+
+---
+
 ## [0.4.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0) — 2026-10-15
 
 **GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0

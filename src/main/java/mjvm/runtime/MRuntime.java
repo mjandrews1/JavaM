@@ -168,6 +168,10 @@ public final class MRuntime {
     }
 
     static List<String> pathOf(String name) {
+        return pathOf(name, null);
+    }
+
+    static List<String> pathOf(String name, MRuntime rt) {
         List<String> path = new ArrayList<>();
         int p = name.indexOf('(');
         if (p < 0) {
@@ -182,10 +186,8 @@ public final class MRuntime {
         for (int i = 0; i < inner.length(); i++) {
             char c = inner.charAt(i);
             if (inS) {
-                if (c == '"') inS = false;
-                else if (c != '"') { /* keep */ }
                 sb.append(c);
-                if (c == '"' && sb.length() > 1 && inner.charAt(i) == '"') { }
+                if (c == '"') inS = false;
                 continue;
             }
             if (c == '"') {
@@ -204,13 +206,13 @@ public final class MRuntime {
                 continue;
             }
             if (c == ',' && depth == 0) {
-                path.add(subOf(sb.toString().trim()));
+                path.add(subOf(sb.toString().trim(), rt));
                 sb.setLength(0);
                 continue;
             }
             sb.append(c);
         }
-        if (sb.length() > 0) path.add(subOf(sb.toString().trim()));
+        if (sb.length() > 0) path.add(subOf(sb.toString().trim(), rt));
         return path;
     }
 
@@ -223,12 +225,20 @@ public final class MRuntime {
      * {@code $ORDER} returns the non-canonical form and FileMan's numeric
      * field/index subscripts never compare equal to a literal (GAP-1).
      */
-    static String subOf(String s) {
+    static String subOf(String s, MRuntime rt) {
         if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
             return s.substring(1, s.length() - 1);
         }
         if (isNumericLiteral(s)) {
             return jvmumps.ExprEval.mstr(Double.parseDouble(s));
+        }
+        // variable reference — evaluate it
+        if (rt != null && !s.isEmpty() && (Character.isLetter(s.charAt(0)) || s.charAt(0) == '%')) {
+            try {
+                return rt.evalExpr(s).asStr();
+            } catch (Exception e) {
+                return s;
+            }
         }
         return s;
     }
@@ -257,7 +267,7 @@ public final class MRuntime {
 
     public MValue getVar(String name) {
         if (locals.containsKey(name)) return locals.get(name);
-        List<String> path = pathOf(name);
+        List<String> path = pathOf(name, this);
         boolean glob = path.get(0).startsWith("^");
         if (!glob && store.data(path, false) % 2 == 0) {
             throw new jvmumps.MError("Undefined local variable");
@@ -266,7 +276,7 @@ public final class MRuntime {
     }
 
     public void setVar(String name, MValue v) {
-        List<String> path = pathOf(name);
+        List<String> path = pathOf(name, this);
         boolean glob = path.get(0).startsWith("^");
         if (tlevel > 0) {
             MValue old = store.get(path, glob);
@@ -357,8 +367,22 @@ public final class MRuntime {
     }
 
     public void call(String name, int argc) {
+        call(name, new jvmumps.MValue[0]);
+    }
+
+    public void call(String name, jvmumps.MValue[] argv) {
+        // argumentless DO — no-op (dotted block continues inline)
+        if (name == null || name.isEmpty()) return;
+        // Linked routine (ZLINK semantics): DO tag resolves against linked tags.
+        if (linkedTags != null && linkedProg != null) {
+            Integer pc = linkedTags.get(name.toUpperCase());
+            if (pc != null) {
+                mjvm.runtime.IrMachine.runExtrinsic(linkedProg, this, pc, argv);
+                return;
+            }
+        }
         if (resolver != null) {
-            resolver.call(name, argc, this);
+            resolver.call(name, argv.length, this);
             return;
         }
         throw new jvmumps.MError("No such label '" + name + "'");
@@ -395,7 +419,7 @@ public final class MRuntime {
 
     public void killVar(String name) {
         if (name == null || name.isEmpty()) return;
-        List<String> path = pathOf(name);
+        List<String> path = pathOf(name, this);
         boolean glob = path.get(0).startsWith("^");
         locals.remove(name);
         store.kill(path, glob);
@@ -403,18 +427,18 @@ public final class MRuntime {
 
     /** M12: $ORDER / $DATA / $QUERY / $NAME via the store tree. */
     public String order(String key, double dir) {
-        List<String> path = pathOf(key);
+        List<String> path = pathOf(key, this);
         return store.order(path, path.get(0).startsWith("^"), dir);
     }
 
     public int data(String key) {
-        List<String> path = pathOf(key);
+        List<String> path = pathOf(key, this);
         return store.data(path, path.get(0).startsWith("^"));
     }
 
     /** SET $EXTRACT(ref,from,to)=v / SET $PIECE(ref,d,f,t)=v */
     public void setExtract(String ref, int from, int to, String v) {
-        List<String> path = pathOf(ref);
+        List<String> path = pathOf(ref, this);
         boolean glob = path.get(0).startsWith("^");
         String cur = store.get(path, glob).asStr();
         if (to < from) to = from;
@@ -434,7 +458,7 @@ public final class MRuntime {
     }
 
     public void setPiece(String ref, String d, int from, int to, String v) {
-        List<String> path = pathOf(ref);
+        List<String> path = pathOf(ref, this);
         boolean glob = path.get(0).startsWith("^");
         String cur = store.get(path, glob).asStr();
         setVar(ref, jvmumps.MValue.ofString(jvmumps.LineInterp.setPieceOf(cur, d, from, to, v)));
@@ -443,8 +467,8 @@ public final class MRuntime {
     /** MERGE dst ← src (tree). */
     public void mergeVar(String dst, String src) {
         if (dst == null || src == null) return;
-        List<String> d = pathOf(dst);
-        List<String> s = pathOf(src);
+        List<String> d = pathOf(dst, this);
+        List<String> s = pathOf(src, this);
         boolean dg = d.get(0).startsWith("^");
         boolean sg = s.get(0).startsWith("^");
         store.merge(d, dg, s, sg);
@@ -452,7 +476,7 @@ public final class MRuntime {
 
     /** $QUERY */
     public String query(String key, int dir) {
-        List<String> path = key.isEmpty() ? List.of("") : pathOf(key);
+        List<String> path = key.isEmpty() ? List.of("") : pathOf(key, this);
         return store.queryNext(path, !path.isEmpty() && path.get(0).startsWith("^"), dir);
     }
 

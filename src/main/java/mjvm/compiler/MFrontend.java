@@ -139,6 +139,9 @@ public final class MFrontend {
                 while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
                         || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
                 String target = line.substring(tst, i);
+                // TAG^ROUTINE syntax — strip the ^routine part
+                int caret = target.indexOf('^');
+                if (caret > 0) target = target.substring(0, caret);
                 // don't treat a known command as a DO target (D:1 W 1 → argless DO + W)
                 if (!target.isEmpty() && MFrontendUtil.isKnownCmd(target) && target.length() <= 2
                         && (i >= line.length() || line.charAt(i) == ' ' || line.charAt(i) == ':')) {
@@ -489,6 +492,11 @@ public final class MFrontend {
             int tst = i;
             while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
             String fn = line.substring(tst, i);
+            // $$TAG^ROUTINE syntax — strip ^routine part
+            if (i < line.length() && line.charAt(i) == '^') {
+                i++;
+                while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
+            }
             List<Ir> args = new ArrayList<>();
             if (i < line.length() && line.charAt(i) == '(') {
                 i++;
@@ -507,6 +515,11 @@ public final class MFrontend {
         int tst = i;
         while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
         String target = line.substring(tst, i).toUpperCase();
+        // TAG^ROUTINE syntax — strip the ^routine part (target is the tag)
+        if (i < line.length() && line.charAt(i) == '^') {
+            i++;
+            while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i)) || line.charAt(i) == '%')) i++;
+        }
         List<Ir> argOps = new ArrayList<>();
         if (i < line.length() && line.charAt(i) == '(') {
             i++;
@@ -523,6 +536,10 @@ public final class MFrontend {
         if (tl != null) {
             patches.add(new int[] {selfLine, out.size(), tl, argOps.size()});
             out.add((isGoto || activeGoto) ? Ir.jmp(-1) : Ir.callPc(-1));
+        } else {
+            // target not in this routine's labels — emit CALL for
+            // external tags (linked routine / ZLINK / stdlib)
+            out.add(new Ir(Ir.CALL, target, null, 0, argOps.size()));
         }
         return i;
     }
