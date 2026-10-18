@@ -62,17 +62,34 @@ public final class MFrontend {
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
                 i = MFrontendCmds.compileWrite(this, line, i, out);
             } else if (cmd.equals("Q") || cmd.equals("QUIT")) {
-                // Q / QUIT with an expression is an extrinsic return value
+                // Q:postcond [expr] — postconditional quit
+                // Q expr — quit with value
+                // Q — argumentless quit
+                boolean hasPostcond = false;
+                int postJ0 = -1;
+                i = MFrontendUtil.skipWs(line, i);
+                if (i < line.length() && line.charAt(i) == ':') {
+                    i++;
+                    int cs = i;
+                    i = MFrontendUtil.scanExprEnd(line, i, " ");
+                    String cond = line.substring(cs, i).trim();
+                    out.add(Ir.evalExpr(cond));
+                    postJ0 = out.size();
+                    out.add(Ir.jmp0(-1)); // false → skip quit
+                    hasPostcond = true;
+                }
                 i = MFrontendUtil.skipWs(line, i);
                 int qs = i;
                 while (i < line.length() && !MFrontendUtil.isCmdStart(line, i)) i++;
                 String qexpr = line.substring(qs, i).trim();
                 if (!qexpr.isEmpty()) {
-                    // push the value the same way WRITE does, then capture it
                     out.add(Ir.evalExpr(qexpr));
                     out.add(Ir.retVal());
                 } else {
                     out.add(Ir.ret());
+                }
+                if (hasPostcond) {
+                    out.set(postJ0, Ir.jmp0(out.size()));
                 }
                 break;
             } else if (cmd.equals("H") || cmd.equals("HALT") || cmd.equals("HANG")) {
@@ -114,6 +131,20 @@ public final class MFrontend {
                         if (isG) i = line.length();
                         continue;
                     }
+                    // argless DO: next token is a known command or EOL
+                    int peek = MFrontendUtil.skipWs(line, i);
+                    if (peek >= line.length()) {
+                        // argless DO at end of line — no-op
+                        continue;
+                    }
+                    // read the full word at peek
+                    int pw = peek;
+                    while (pw < line.length() && Character.isLetter(line.charAt(pw))) pw++;
+                    String pword = line.substring(peek, pw);
+                    if (Character.isLetter(line.charAt(peek)) && MFrontendUtil.isKnownCmd(pword)) {
+                        // argless DO — next is a command, not a target
+                        continue;
+                    }
                     activeGoto = isG;
                     i = compileDoGotoRet(line, i, out, activePatches, activeLabels, activeSelfLine, isG);
                     activeGoto = false;
@@ -149,12 +180,8 @@ public final class MFrontend {
                     target = "";
                 }
                 if (target.isEmpty()) {
-                    // at a known command? argless DO — emit call and let main loop continue
-                    if (i < line.length() && Character.isLetter(line.charAt(i))
-                            && MFrontendUtil.isKnownCmd(String.valueOf(line.charAt(i)))) {
-                        out.add(Ir.call(cmd, 0));
-                    } else {
-                        // expression form (string / $$fn) — evaluate one arg
+                    // expression form (string / $$fn) — evaluate one arg
+                    if (i < line.length() && (line.charAt(i) == '"' || line.charAt(i) == '$')) {
                         List<Ir> tmp = new ArrayList<>();
                         i = compileExpr(line, i, tmp, " ");
                         out.addAll(tmp);
@@ -164,6 +191,7 @@ public final class MFrontend {
                             out.add(Ir.call(cmd, 1));
                         }
                     }
+                    // else argless DO — no-op, body continues in main loop
                 } else {
                     out.add(Ir.call(target, 0));
                 }
@@ -345,6 +373,17 @@ public final class MFrontend {
                         body = raw.substring(i);
                     }
                 }
+            }
+            // dotted-block continuation: strip leading dots and treat as body
+            if (!raw.isEmpty() && raw.trim().startsWith(".")) {
+                String d = raw.trim();
+                while (d.startsWith(".")) {
+                    d = d.substring(1);
+                    if (d.startsWith(" ")) d = d.substring(1);
+                }
+                tags.add(null);
+                bodies.add(d);
+                continue;
             }
             tags.add(tag);
             bodies.add(body);
@@ -567,8 +606,23 @@ public final class MFrontend {
         while (i < line.length() && (Character.isLetterOrDigit(line.charAt(i))
                 || line.charAt(i) == '%' || line.charAt(i) == '^')) i++;
         String var = line.substring(st, i);
-        if (var.isEmpty()) throw new MError("FOR requires a variable");
+        // argumentless FOR: F  body — variable is empty, OR is a known command
+        // followed by space (not =, which means it's a FOR variable like F I=1:1:5)
+        boolean nextIsEq = i < line.length() && line.charAt(i) == '=';
+        if (var.isEmpty() || (MFrontendUtil.isKnownCmd(var) && !nextIsEq)) {
+            return compileArglessFor(line, st, out);
+        }
         return compileForSpec(line, st, out, var);
+    }
+
+    private int compileArglessFor(String line, int i, List<Ir> out) {
+        // F  body — infinite loop; body is the rest of the line
+        // Emit: loop start, compile body, jump back
+        int loopStart = out.size();
+        String body = line.substring(i);
+        compileInto(body, out);
+        out.add(Ir.jmp(loopStart));
+        return line.length();
     }
 
     private int compileForSpec(String line, int varStart, List<Ir> out, String var) {
@@ -670,7 +724,8 @@ public final class MFrontend {
 
     void compileInto(String body, List<Ir> out) {
         if (body.isEmpty()) return;
-        out.addAll(compile(body, false));
+        List<Ir> tmp = compile(body, false);
+        out.addAll(tmp);
     }
 
     void compileExprSrc(String src, List<Ir> out) {
