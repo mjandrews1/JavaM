@@ -155,6 +155,12 @@ final class MFrontendUtil {
 
     static boolean isCmdStart(String s, int i) {
         if (i >= s.length() || !Character.isLetter(s.charAt(i))) return false;
+        // must be at a word boundary (start of string or after non-word char)
+        // so %AL doesn't match L (LOCK) at the tail of a variable name
+        if (i > 0) {
+            char prev = s.charAt(i - 1);
+            if (Character.isLetterOrDigit(prev) || prev == '%') return false;
+        }
         int j = i;
         while (j < s.length() && Character.isLetter(s.charAt(j))) j++;
         String w = s.substring(i, j).toUpperCase();
