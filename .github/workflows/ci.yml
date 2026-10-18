@@ -40,6 +40,15 @@ jobs:
           grep -q 'MATCH=135' native-score.txt
           grep -q 'ERR=0' native-score.txt
 
+      - name: REPL smoke (scripted)
+        run: |
+          printf 'W "ok",!\nS X=5 W X,!\n/quit\n' | \
+            java -cp "build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" \
+            jvmumps.Repl | grep -q 'ok'
+          printf 'W "ok",!\nS X=5 W X,!\n/quit\n' | \
+            java -cp "build:lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar" \
+            mjvm.cli.Repl | grep -q 'ok'
+
 
       - name: Dependency advisory (OSV)
         run: |
