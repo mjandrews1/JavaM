@@ -357,6 +357,14 @@ public final class MRuntime {
     }
 
     public void call(String name, int argc) {
+        // Linked routine (ZLINK semantics): DO tag resolves against linked tags.
+        if (linkedTags != null && linkedProg != null) {
+            Integer pc = linkedTags.get(name.toUpperCase());
+            if (pc != null) {
+                mjvm.runtime.IrMachine.runExtrinsic(linkedProg, this, pc, new jvmumps.MValue[0]);
+                return;
+            }
+        }
         if (resolver != null) {
             resolver.call(name, argc, this);
             return;
