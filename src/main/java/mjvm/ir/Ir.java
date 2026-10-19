@@ -13,6 +13,7 @@ public final class Ir {
     public static final int PUSH = 1;       // PUSH slot|const
     public static final int LOAD = 2;       // LOAD name → stack
     public static final int STORE = 3;      // STORE name ← stack
+    public static final int STORE_ADD = 4;  // STORE_ADD name ← stack (atomic increment)
     public static final int BIND = 33;      // formal bind: name ← stack, or UNDEF if empty
     public static final int ADD = 10;
     public static final int SUB = 11;
@@ -57,6 +58,7 @@ public final class Ir {
     public static final int RET_TO = 87;
     public static final int END_WRITE = 26;
     public static final int XECUTE = 88;
+    public static final int PUSH_REG = 89;  // push last stored value (peephole)
 
     public final int op;
     public final String name;   // var / label / write-tag
@@ -86,6 +88,16 @@ public final class Ir {
 
     public static Ir store(String n) {
         return new Ir(STORE, n, null, 0, 0);
+    }
+
+    /** Atomic increment: read current value at name, add stack value, store back. */
+    public static Ir storeAdd(String n) {
+        return new Ir(STORE_ADD, n, null, 0, 0);
+    }
+
+    /** Push last stored value onto stack (peephole for redundant reads). */
+    public static Ir pushReg() {
+        return new Ir(PUSH_REG, null, null, 0, 0);
     }
 
     /** Formal binding at a call target. On a top-down run the value stack is

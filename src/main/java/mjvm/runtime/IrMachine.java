@@ -80,6 +80,7 @@ public final class IrMachine {
         int sp = 0;
         int pc = startPc;
         java.util.ArrayDeque<Integer> rets = new java.util.ArrayDeque<>();
+        MValue lastStored = MValue.EMPTY;
         final boolean extrinsic = args != null;
         if (extrinsic) {
             for (MValue a : args) vals[sp++] = a == null ? MValue.EMPTY : a;
@@ -107,6 +108,7 @@ public final class IrMachine {
                 }
                 case Ir.STORE -> {
                     MValue v = vals[--sp];
+                    lastStored = v;
                     if (op.name != null && op.name.startsWith("@")) {
                         String target = rt.evalExpr(op.name.substring(1)).asStr();
                         rt.setVar(target, v);
@@ -115,6 +117,17 @@ public final class IrMachine {
                     } else {
                         rt.setVar(op.name, v);
                     }
+                }
+                case Ir.STORE_ADD -> {
+                    // Atomic increment: pop amount, use store.increment for single-op
+                    MValue inc = vals[--sp];
+                    MValue nv = rt.incrementVar(op.name, inc.asNum());
+                    lastStored = nv;
+                    vals[sp++] = nv;
+                }
+                case Ir.PUSH_REG -> {
+                    // Push last stored value (peephole for redundant reads)
+                    vals[sp++] = lastStored;
                 }
                 case Ir.ADD, Ir.SUB, Ir.MUL, Ir.DIV, Ir.CONCAT, Ir.MOD -> {
                     MValue b = vals[--sp];

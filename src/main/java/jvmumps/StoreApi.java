@@ -10,6 +10,9 @@ import java.util.List;
  * Values are {@link MValue}; numeric strings are stored as text.
  */
 public interface StoreApi {
+
+    /** Number of store operations (GET + SET + KILL) performed. */
+    default long storeOps() { return 0; }
     /** GET: value at path, or empty if undefined. */
     MValue get(List<String> path, boolean global);
 
@@ -18,6 +21,15 @@ public interface StoreApi {
 
     /** KILL: delete node and descendants at path. */
     void kill(List<String> path, boolean global);
+
+    /** Atomic increment: read current value, add amount, write back. Returns new value. */
+    default MValue increment(List<String> path, boolean global, double amount) {
+        MValue cur = get(path, global);
+        double v = cur.asNum() + amount;
+        MValue nv = MValue.ofNumber(v);
+        set(path, global, nv);
+        return nv;
+    }
 
     /** $DATA: 0 none · 1 value · 10 descendants · 11 both. */
     int data(List<String> path, boolean global);

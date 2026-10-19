@@ -290,6 +290,13 @@ public final class MRuntime {
         }
     }
 
+    /** Atomic increment: delegates to store.increment for single-op path. */
+    public jvmumps.MValue incrementVar(String name, double amount) {
+        List<String> path = pathOf(name, this);
+        boolean glob = path.get(0).startsWith("^");
+        return store.increment(path, glob, amount);
+    }
+
     public boolean isQuit() {
         return quit;
     }
