@@ -140,7 +140,9 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 ## Template for new entries
 
 ```markdown
-## [Unreleased]
+## [1.0.0](https://github.com/mjandrews1/JavaM/releases/tag/v1.0.0) — 2026-10-18
+
+**MAJOR** — corpus `expected` values changed (VERSIONING.md rule). 1.0.0 gates met: corpus **139/0/0**, smoke 106 OK, FileMan Tier A no ENGINE GAP.
 
 ### Added
 - **PEMDAS M evaluator** — `src/main/m/lib/PEMDAS.m`, pure-M recursive descent arithmetic with full PEMDAS precedence (unary > `**` right-assoc > `*` `/` left-assoc > `+` `-` left-assoc). 17/17 cases green.
@@ -151,10 +153,27 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 - **Parser: dotted-block merger** — matches `F … D` tails (not just standalone `D`); strips nested dots correctly.
 - **Parser: `isCmdStart` word boundary** — `%AL` no longer matches `L` (LOCK) at the tail of a variable name.
 - **Conformance: 4 RSM divergences resolved** — T11d/C16/C24 expected values updated to ISO 11756 §8.3 (numeric compare for numeric strings, string collation otherwise) matching post-rsm#11 RSM. T15 `$TLEVEL` is 0 outside a transaction per ISO §6.3.20. Corpus now **139/0/0**.
+
+### Contract
+- corpus: **139 / 0 / 0** (was 135/4/0). 4 RSM DIVERGENCES resolved to ISO 11756.
+- mJVM version string: `V1.0.0`.
+
+## [Unreleased]
+
+### Added
+- **#N** what — why
+
+### Fixed
+- **#N** what — why
+
+### Docs
+- **#N** what — why
 ```
 
 Every user-visible PR should append here (PR template checkbox).
 
+[1.0.0]: https://github.com/mjandrews1/JavaM/releases/tag/v1.0.0
+[0.9.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.9.0
 [0.4.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0
 [0.3.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.3.0
 [0.2.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.2.0
