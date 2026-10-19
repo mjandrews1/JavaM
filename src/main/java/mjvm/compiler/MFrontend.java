@@ -58,7 +58,23 @@ public final class MFrontend {
             }
             i = MFrontendUtil.skipWs(line, i);
             if (cmd.equals("S") || cmd.equals("SET")) {
+                // postconditional SET: S:COND var=val — assign only if COND
+                boolean setPostcond = false;
+                int setJ0 = -1;
+                if (i < line.length() && line.charAt(i) == ':') {
+                    i++;
+                    int cs = i;
+                    i = MFrontendUtil.scanExprEnd(line, i, " ");
+                    String cond = line.substring(cs, i).trim();
+                    out.add(Ir.evalExpr(cond));
+                    setJ0 = out.size();
+                    out.add(Ir.jmp0(-1)); // false → skip SET
+                    setPostcond = true;
+                }
                 i = MFrontendCmds.compileSet(this, line, i, out);
+                if (setPostcond) {
+                    out.set(setJ0, Ir.jmp0(out.size()));
+                }
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
                 i = MFrontendCmds.compileWrite(this, line, i, out);
             } else if (cmd.equals("Q") || cmd.equals("QUIT")) {
@@ -759,8 +775,17 @@ public final class MFrontend {
 
     void compileInto(String body, List<Ir> out) {
         if (body.isEmpty()) return;
+        int base = out.size();
         List<Ir> tmp = compile(body, false);
-        out.addAll(tmp);
+        // Offset local JMP/JMP0 targets by the insertion base so they
+        // resolve correctly when copied into the parent list.
+        for (Ir ir : tmp) {
+            if ((ir.op == Ir.JMP || ir.op == Ir.JMP0) && ir.iarg >= 0 && ir.iarg <= tmp.size()) {
+                out.add(new Ir(ir.op, ir.name, ir.ival, ir.dval, base + ir.iarg));
+            } else {
+                out.add(ir);
+            }
+        }
     }
 
     void compileExprSrc(String src, List<Ir> out) {
@@ -786,6 +811,7 @@ public final class MFrontend {
             String name = line.substring(st, i);
             if (name.isEmpty()) break;
             if (i < line.length() && line.charAt(i) == '(') {
+                int subStart = i;
                 int depth = 0;
                 while (i < line.length()) {
                     char c = line.charAt(i++);
@@ -795,6 +821,7 @@ public final class MFrontend {
                         if (depth == 0) break;
                     }
                 }
+                name = name + line.substring(subStart, i);
             }
             if (kind == Ir.NEW) out.add(Ir.newName(name));
             else out.add(Ir.killName(name));
