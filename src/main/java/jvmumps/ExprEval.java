@@ -94,6 +94,38 @@ public final class ExprEval {
     public String ztrap = "";
 
     public MValue eval(String src) {
+        // Fast path: simple $$fn(args) extrinsic call — skip full parser
+        // Only for simple args (no byref `.var`, no nested $$, no `@` indirection)
+        if (src.startsWith("$$") && src.indexOf('.') < 0 && src.indexOf('@') < 0 && src.indexOf('?') < 0) {
+            int paren = src.indexOf('(');
+            if (paren > 2 && src.endsWith(")")) {
+                String fn = src.substring(2, paren);
+                // Strip ^ROUTINE qualifier if present
+                int caret = fn.indexOf('^');
+                if (caret > 0) fn = fn.substring(0, caret);
+                String argStr = src.substring(paren + 1, src.length() - 1);
+                // Parse simple args: comma-separated values (variables, numbers, strings)
+                List<MValue> args = new ArrayList<>();
+                if (!argStr.isEmpty()) {
+                    int start = 0;
+                    int depth = 0;
+                    for (int j = 0; j <= argStr.length(); j++) {
+                        if (j == argStr.length() || (argStr.charAt(j) == ',' && depth == 0)) {
+                            String a = argStr.substring(start, j).trim();
+                            if (!a.isEmpty()) {
+                                // Evaluate simple arg (variable, number, or string)
+                                List<ExprTokens.Tok> atoks = tokenCache.computeIfAbsent(a, k -> ExprTokens.lex(k));
+                                Parser ap = new Parser(atoks);
+                                args.add(ap.expr());
+                            }
+                            start = j + 1;
+                        } else if (argStr.charAt(j) == '(') depth++;
+                        else if (argStr.charAt(j) == ')') depth--;
+                    }
+                }
+                return env.extrinsic(fn, args, null);
+            }
+        }
         List<ExprTokens.Tok> toks = tokenCache.computeIfAbsent(src, k -> ExprTokens.lex(k));
         Parser p = new Parser(toks);
         MValue v = p.expr();
