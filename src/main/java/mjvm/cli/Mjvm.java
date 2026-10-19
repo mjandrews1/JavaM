@@ -33,7 +33,7 @@ import mjvm.runtime.MRuntime;
  *   mjvm --store cdb2|sqlite|memory   pick StoreApi backend (mesh/SQL plane = cdb2)
  */
 public final class Mjvm {
-    public static final String VERSION = "V0.4.0 (mJVM)";
+    public static final String VERSION = "V1.0.0 (mJVM)";
     public static final String BANNER =
             "mJVM " + VERSION + " — JVM-native M (JvMumps StoreApi)\n"
             + "Drop-in CLI shaped like Reference Standard M (rsm)\n";

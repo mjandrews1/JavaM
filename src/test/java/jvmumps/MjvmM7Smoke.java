@@ -41,7 +41,7 @@ public final class MjvmM7Smoke {
         String db = tmp.resolve("test.dat").toString();
 
         String out = cap(null, new String[] {"-V"});
-        chkContains(out, "V0.4.0", "M7-V");
+        chkContains(out, "V1.0.0", "M7-V");
 
         out = cap(null, new String[] {"-h"});
         chkContains(out, "Create database volume", "M7-h");
