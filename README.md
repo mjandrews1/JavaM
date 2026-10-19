@@ -3,7 +3,7 @@
 **Last updated:** 2026-10-05  
 **Status:** project charter and critical path (implementation in progress alongside PyMumps/C3Mumps).  
 **Sibling:** `fst/docs/RSM-PORT-COMPLETION.md` (PyMumps / C3Mumps — same full-M charter).
-**Release:** [**v0.4.0**](https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0) · see [CHANGELOG.md](CHANGELOG.md).
+**Release:** [**v1.0.0**](https://github.com/mjandrews1/JavaM/releases/tag/v1.0.0) · see [CHANGELOG.md](CHANGELOG.md).
 
 ### v0.4.0 fleet smoke (2026-10-15)
 
@@ -16,6 +16,12 @@
 | `u01-mjvm-bench` (LXC) | 99 / 99 OK | 131 / 8 / 0 | auto 8×2 · 0 timeouts |
 
 `SqlLockStressSmoke` auto-sizes for the host (calibration + downshift on slow LXC).
+
+### v1.0.0 (2026-10-18)
+
+- **PEMDAS M evaluator** — pure-M recursive descent arithmetic, 17/17 green.
+- **Conformance 139 / 0 / 0** — 4 RSM divergences resolved to ISO 11756.
+- Smoke **106 OK** · Tier C **15/0** · FileMan Tier A no ENGINE GAP.
 
 **Next:** [docs/ROADMAP-0.5.0.md](docs/ROADMAP-0.5.0.md) — perf review cycle (milestone [v0.5.0](https://github.com/mjandrews1/JavaM/milestone/2)) · [docs/BENCH.md](docs/BENCH.md) · [docs/PERF-REVIEW.md](docs/PERF-REVIEW.md).
 
