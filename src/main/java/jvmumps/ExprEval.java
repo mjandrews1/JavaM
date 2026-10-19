@@ -377,16 +377,22 @@ public final class ExprEval {
          */
         MValue binaryExpr() {
             MValue a = unary();
+            // String concat builder: accumulate consecutive _ operations
+            StringBuilder concatBuf = null;
             while (true) {
-                if (isOp("**", "*", "/", "\\", "#", "+", "-")) {
+                if (isOp("_")) {
+                    if (concatBuf == null) concatBuf = new StringBuilder(a.asStr());
+                    takeOp();
+                    MValue b = unary();
+                    concatBuf.append(b.asStr());
+                } else if (isOp("**", "*", "/", "\\", "#", "+", "-")) {
+                    // Flush pending concat before arithmetic
+                    if (concatBuf != null) { a = MValue.ofString(concatBuf.toString()); concatBuf = null; }
                     String op = takeOp();
                     MValue b = unary();
                     a = arith(op, a, b);
-                } else if (isOp("_")) {
-                    takeOp();
-                    MValue b = unary();
-                    a = MValue.ofString(a.asStr() + b.asStr());
                 } else if (isOp("?", "'?")) {
+                    if (concatBuf != null) { a = MValue.ofString(concatBuf.toString()); concatBuf = null; }
                     String op = takeOp();
                     String pat = readPatternSrc();
                     boolean m = PatternMatch.match(a.asStr(), pat);
@@ -395,10 +401,12 @@ public final class ExprEval {
                     }
                     a = m ? MValue.ofNumber(1) : MValue.ofNumber(0);
                 } else if (isOp("=", "'=", "<", ">", "<=", ">=", "'<", "'>", "[", "']", "]", "]]")) {
+                    if (concatBuf != null) { a = MValue.ofString(concatBuf.toString()); concatBuf = null; }
                     String op = takeOp();
                     MValue b = unary();
                     a = compare(op, a, b);
                 } else if (isOp("&", "'&", "!", "'!")) {
+                    if (concatBuf != null) { a = MValue.ofString(concatBuf.toString()); concatBuf = null; }
                     String op = takeOp();
                     MValue b = unary();
                     a = logic(op, a, b);
@@ -406,6 +414,8 @@ public final class ExprEval {
                     break;
                 }
             }
+            // Flush any remaining concat
+            if (concatBuf != null) a = MValue.ofString(concatBuf.toString());
             return a;
         }
 
