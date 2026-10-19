@@ -35,8 +35,8 @@
     {
       "name": "T11d.cmp-operators",
       "code": "W \"lt=\",(\"a\"<\"b\"),\" eq=\",(\"a\"=\"a\"),\" gt=\",(\"b\">\"a\"),! W \"nlt=\",(1<2),\" neq=\",(1=2),!",
-      "why": "#:DIVERGE rsm#11 -- relational < > on strings return 0 (ISO 7.4 does case-sensitive string compare)",
-      "expected": "lt=0 eq=1 gt=0\nnlt=1 neq=0"
+      "why": "string collation for non-numeric, numeric compare for numbers (ISO 11756 8.3, rsm#11 fixed in _rsm)",
+      "expected": "lt=1 eq=1 gt=1\nnlt=1 neq=0"
     },
     {
       "name": "T14.order-empty",
@@ -53,8 +53,8 @@
     {
       "name": "T15.tlevel",
       "code": "W \"TLEVEL=\",$TLEVEL,!",
-      "why": "#:DIVERGE rsm#15 -- $TLEVEL not implemented (ISO 6.3.20 defines it as DO nesting level)",
-      "expected": "Undefined special variable"
+      "why": "$TLEVEL is 0 outside a transaction (ISO 11756 6.3.20, rsm#15 fixed in _rsm)",
+      "expected": "TLEVEL=0"
     },
     {
       "name": "T13.pattern",
@@ -161,8 +161,8 @@
     {
       "name": "C16.str-compare",
       "code": "W (\"a\"<\"b\"),\" \",(\"b\"<\"a\"),\" \",(\"a\"=\"A\"),!",
-      "why": "#:DIVERGE rsm#11 -- relational < > on strings return 0; = is case-sensitive (ISO 7.4)",
-      "expected": "0 0 0"
+      "why": "string collation by character code, case-sensitive (ISO 11756 8.3, rsm#11 fixed in _rsm)",
+      "expected": "1 0 0"
     },
     {
       "name": "C17.neg",
@@ -209,8 +209,8 @@
     {
       "name": "C24.eq-noncanonical",
       "code": "W (\"1.0\"=1),\" \",(\"1E2\"=100),\" \",(\"+1\"=1),!",
-      "why": "#:DIVERGE rsm#11b -- = is memcmp on string forms, not numeric equality (ISO 7.4 does numeric compare when both numeric)",
-      "expected": "0 0 0"
+      "why": "= is numeric compare when both operands are numeric strings (ISO 11756 8.3, rsm#11 fixed in _rsm)",
+      "expected": "1 1 1"
     },
     {
       "name": "C25.mstr-frac",
