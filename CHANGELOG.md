@@ -143,13 +143,14 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 ## [Unreleased]
 
 ### Added
-- **#N** what — why
+- **PEMDAS M evaluator** — `src/main/m/lib/PEMDAS.m`, pure-M recursive descent arithmetic with full PEMDAS precedence (unary > `**` right-assoc > `*` `/` left-assoc > `+` `-` left-assoc). 17/17 cases green.
 
 ### Fixed
-- **#N** what — why
-
-### Docs
-- **#N** what — why
+- **Parser: QUIT postcond** — `Q:COND` now falls through to the next command when the guard is false (was `break`, dropping the rest of the line).
+- **Parser: argless FOR `Q:cond` guard** — `compileArglessFor` peels a leading `Q:cond` as the loop exit guard instead of treating it as body code.
+- **Parser: dotted-block merger** — matches `F … D` tails (not just standalone `D`); strips nested dots correctly.
+- **Parser: `isCmdStart` word boundary** — `%AL` no longer matches `L` (LOCK) at the tail of a variable name.
+- **Conformance: 4 RSM divergences resolved** — T11d/C16/C24 expected values updated to ISO 11756 §8.3 (numeric compare for numeric strings, string collation otherwise) matching post-rsm#11 RSM. T15 `$TLEVEL` is 0 outside a transaction per ISO §6.3.20. Corpus now **139/0/0**.
 ```
 
 Every user-visible PR should append here (PR template checkbox).
