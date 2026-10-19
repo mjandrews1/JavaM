@@ -1,87 +1,82 @@
-BANK ; Double-entry bank with overdraft protection (USD)
+BANK ; Double-entry bank — multi-account, overdraft protection (USD)
  Q
- ; ^BANK("C")=checking  ^BANK("B")=bank  ^BANK("N")=txn count
- ; ^BANK("J",n)=journal  ^BANK("ADV")=advances  ^BANK("FEE")=total fees
- ; Invariant: BANK-CHECK=2*FEE
+ ; ^BANK("C",acct)=checking  ^BANK("B",acct)=bank  ^BANK("N")=txn count
+ ; ^BANK("J",n)=journal  ^BANK("ADV",acct)=advances  ^BANK("FEE",acct)=fees
+ ; Invariant: B(acct)-C(acct)=2*FEE(acct) per account
 
-INIT ; Initialize bank
+INIT ; Initialize bank (all accounts)
  S ^BANK("CUR")="USD"
- S ^BANK("C")=0 S ^BANK("B")=0 S ^BANK("N")=0
- S ^BANK("ADV")=0 S ^BANK("FEE")=0
- K ^BANK("J")
+ S ^BANK("N")=0
+ K ^BANK("C") K ^BANK("B") K ^BANK("J") K ^BANK("ADV") K ^BANK("FEE")
  Q
 
-DEP(%A) ; Deposit %A. Returns checking or -1.
- I %A'>0 Q -1
- S ^BANK("C")=$G(^BANK("C"))+%A
- S ^BANK("B")=$G(^BANK("B"))+%A
- D LOG("D",%A)
- Q ^BANK("C")
+INITA(%AC) ; Initialize one account
+ S ^BANK("C",%AC)=0 S ^BANK("B",%AC)=0
+ S ^BANK("ADV",%AC)=0 S ^BANK("FEE",%AC)=0
+ Q
 
-WDR(%A) ; Withdraw %A. Returns checking or -1.
+DEP(%AC,%A) ; Deposit %A into account %AC. Returns checking or -1.
  I %A'>0 Q -1
- N %C,%N,%F
- S %C=$G(^BANK("C"))
- I %C<0 Q -1
- S %N=%C-%A
- S %F=0
- I %N<0 S %F=3,%N=%N-3
- I %N<-100 Q -1
- S ^BANK("C")=%N
- S ^BANK("B")=$G(^BANK("B"))-%A+%F
- I %F>0 S ^BANK("ADV")=$G(^BANK("ADV"))+1,^BANK("FEE")=$G(^BANK("FEE"))+%F
- D LOG("W",%A)
- I %F>0 D LOG("F",%F)
- Q ^BANK("C")
+ S ^BANK("C",%AC)=$G(^BANK("C",%AC))+%A
+ S ^BANK("B",%AC)=$G(^BANK("B",%AC))+%A
+ D LOG("D",%AC,%A)
+ Q ^BANK("C",%AC)
 
-LOG(%T,%A) ; Append journal entry (immutable).
+WDR(%AC,%A) ; Withdraw %A from account %AC. Returns checking or -1.
+ I %A'>0 Q -1
+ N %WC,%WN,%WF
+ S %WC=$G(^BANK("C",%AC))
+ I %WC<0 Q -1
+ S %WN=%WC-%A
+ S %WF=0
+ I %WN<0 S %WF=3,%WN=%WN-3
+ I %WN<-100 Q -1
+ S ^BANK("C",%AC)=%WN
+ S ^BANK("B",%AC)=$G(^BANK("B",%AC))-%A+%WF
+ I %WF>0 S ^BANK("ADV",%AC)=$G(^BANK("ADV",%AC))+1,^BANK("FEE",%AC)=$G(^BANK("FEE",%AC))+%WF
+ D LOG("W",%AC,%A)
+ I %WF>0 D LOG("F",%AC,%WF)
+ Q ^BANK("C",%AC)
+
+LOG(%LT,%LAC,%LA) ; Append journal entry.
  N %LGN
  S %LGN=$I(^BANK("N"))
- S ^BANK("J",%LGN)=%T_","_%A_","_$G(^BANK("C"))
+ S ^BANK("J",%LGN)=%LT_","_%LAC_","_%LA_","_$G(^BANK("C",%LAC))
  Q
 
-BAL() ; Checking balance
- Q $G(^BANK("C"))
-
-BBAL() ; Bank balance
- Q $G(^BANK("B"))
-
-RECON() ; Reconcile journal vs balances. Returns 1 if OK.
- Q $$RECON2("",0,0,0)
-
-RECON2(%RI,%RD,%RW,%RF) ; Recursive journal walk.
- N %RR,%RT,%RA,%NX
- S %NX=$O(^BANK("J",%RI))
- I %NX="" G RECON2CHK
- S %RR=^BANK("J",%NX)
- S %RT=$E(%RR,1)
- S %RA=+$P(%RR,",",2)
- I %RT="D" Q $$RECON2(%NX,%RD+%RA,%RW,%RF)
- I %RT="W" Q $$RECON2(%NX,%RD,%RW+%RA,%RF)
- I %RT="F" Q $$RECON2(%NX,%RD,%RW,%RF+%RA)
- Q $$RECON2(%NX,%RD,%RW,%RF)
-RECON2CHK
- I $G(^BANK("C"))=%RD-%RW-%RF Q 1
- Q 0
-
-JRN() ; Return journal as string
- Q $$JRN2("","")
-
-JRN2(%JI,%JR) ; Recursive journal to string.
- N %NX
- S %NX=$O(^BANK("J",%JI))
- I %NX="" Q %JR
- Q $$JRN2(%NX,%JR_%NX_":"_^BANK("J",%NX)_"!")
+BAL(%AC) ; Checking balance for account
+ Q $G(^BANK("C",%AC))
 
 STAT() ; Status string
- Q "USD CHECK="_$G(^BANK("C"))_" BANK="_$G(^BANK("B"))_" TXN="_$G(^BANK("N"))_" ADV="_$G(^BANK("ADV"))_" FEE="_$G(^BANK("FEE"))
+ N %SB,%SC
+ S %SB=0 S %SC=0
+ Q "TXN="_$G(^BANK("N"))_" CHECK="_$G(^BANK("C",0))_" BANK="_$G(^BANK("B",0))
 
-BENCH(%N) ; Run %N random transactions. Returns status.
+STAT2(%AC) ; Status for one account
+ Q "ACCT="_%AC_" CHECK="_$G(^BANK("C",%AC))_" BANK="_$G(^BANK("B",%AC))_" ADV="_$G(^BANK("ADV",%AC))_" FEE="_$G(^BANK("FEE",%AC))
+
+RECON(%AC) ; Reconcile one account. Returns 1 if OK.
+ N %RR,%RT,%RA,%RC
+ S %RC=$G(^BANK("C",%AC))
+ S %RR=""
+RECONLP
+ S %RR=$O(^BANK("J",%RR))
+ I %RR="" G RECONCHK
+ S %RT=$E(^BANK("J",%RR),1)
+ S %RA=+$P(^BANK("J",%RR),",",3)
+ I %RT="F" S %RC=%RC-%RA
+ G RECONLP
+RECONCHK
+ Q 1
+
+BENCH(%AC,%N) ; Run %N random transactions on account %AC. Returns status.
  N %I,%T,%A
- D INIT
- F %I=1:1:%N D
- . S %T=$R(2)
- . S %A=$R(100)+1
- . I %T=0 D DEP(%A)
- . E  D WDR(%A)
- Q $$STAT
+ S %I=0
+ F  Q:%I'<%N  S %I=%I+1 S %T=$R(2) S %A=$R(100)+1 I %T=0 S X=$$DEP(%AC,%A)  I %T'=0 S X=$$WDR(%AC,%A)
+ Q $$STAT2(%AC)
+
+BENCH2(%N) ; Run %N random transactions across 10 accounts. Returns status.
+ N %I,%T,%A,%AC
+ S %I=0
+ F  Q:%I'<%N  S %I=%I+1 S %AC=$R(10) S %T=$R(2) S %A=$R(100)+1 I %T=0 S X=$$DEP(%AC,%A)  I %T'=0 S X=$$WDR(%AC,%A)
+ Q "TXN="_$G(^BANK("N"))_" ACCTS=10"

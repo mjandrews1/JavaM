@@ -1,10 +1,10 @@
 package jvmumps;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Local + global trees for J2.
@@ -24,21 +24,21 @@ public final class MStore implements StoreApi {
     public static final class Node {
         MValue value = MValue.EMPTY;
         boolean hasValue = false;
-        final Map<String, Node> kids = new LinkedHashMap<>();
+        final Map<String, Node> kids = new ConcurrentHashMap<>();
 
         Node kid(String s) {
             return kids.computeIfAbsent(s, k -> new Node());
         }
     }
 
-    private final Map<String, Node> locals = new HashMap<>();
-    private final Map<String, Node> globals = new HashMap<>();
+    private final Map<String, Node> locals = new ConcurrentHashMap<>();
+    private final Map<String, Node> globals = new ConcurrentHashMap<>();
     /** Displaced local nodes for NEW restore. */
     private final List<Map<String, Node>> scopeStack = new ArrayList<>();
 
     /** NEW (names==null: hide all locals). Displaced nodes are restored on pop. */
     public void newScope(List<String> names) {
-        Map<String, Node> displaced = new HashMap<>();
+        Map<String, Node> displaced = new ConcurrentHashMap<>();
         if (names == null) {
             displaced.putAll(locals);
             locals.clear();
