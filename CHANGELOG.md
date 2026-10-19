@@ -158,6 +158,18 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 - corpus: **139 / 0 / 0** (was 135/4/0). 4 RSM DIVERGENCES resolved to ISO 11756.
 - mJVM version string: `V1.0.0`.
 
+## [1.0.1](https://github.com/mjandrews1/JavaM/releases/tag/v1.0.1) — 2026-10-18
+
+**PATCH** — docs, CI, and repo hygiene only (VERSIONING.md rule). No engine or contract changes.
+
+### Docs
+- **README** — link to v1.0.0 release; add v1.0.0 status summary (PEMDAS 17/17, corpus 139/0/0, smoke 106 OK).
+
+### Repo
+- **.gitignore** — add `docs/javadoc/` and `tools/__pycache__/` to suppress untracked generated files.
+- **CI** — native score gate updated to `MATCH=139` (was `MATCH=135`).
+- **mJVM version string** — `V1.0.1`.
+
 ## [Unreleased]
 
 ### Added
@@ -172,6 +184,7 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 
 Every user-visible PR should append here (PR template checkbox).
 
+[1.0.1]: https://github.com/mjandrews1/JavaM/releases/tag/v1.0.1
 [1.0.0]: https://github.com/mjandrews1/JavaM/releases/tag/v1.0.0
 [0.9.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.9.0
 [0.4.0]: https://github.com/mjandrews1/JavaM/releases/tag/v0.4.0
