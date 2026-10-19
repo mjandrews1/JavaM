@@ -74,19 +74,10 @@ RECONCHK
 
 BENCH(%AC,%N) ; Run %N random transactions on account %AC. Returns status.
  N %I,%T,%A
- F %I=1:1:%N D
- . S %T=$R(2)
- . S %A=$R(100)+1
- . I %T=0 D DEP(%AC,%A)
- . E  D WDR(%AC,%A)
+ F %I=1:1:%N S %T=$R(2) S %A=$R(100)+1 I %T=0 S X=$$DEP(%AC,%A)  I %T'=0 S X=$$WDR(%AC,%A)
  Q $$STAT2(%AC)
 
 BENCH2(%N) ; Run %N random transactions across 10 accounts. Returns status.
  N %I,%T,%A,%AC
- F %I=1:1:%N D
- . S %AC=$R(10)
- . S %T=$R(2)
- . S %A=$R(100)+1
- . I %T=0 D DEP(%AC,%A)
- . E  D WDR(%AC,%A)
+ F %I=1:1:%N S %AC=$R(10) S %T=$R(2) S %A=$R(100)+1 I %T=0 S X=$$DEP(%AC,%A)  I %T'=0 S X=$$WDR(%AC,%A)
  Q "TXN="_$G(^BANK("N"))_" ACCTS=10"

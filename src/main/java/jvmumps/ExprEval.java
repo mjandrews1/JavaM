@@ -21,6 +21,10 @@ import java.util.List;
  * <p>Number display uses M {@code mstr} ({@code 0.5} -&gt; {@code ".5"}).
  */
 public final class ExprEval {
+    /** Token cache: expression string → tokenized result. Eliminates re-lexing. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, List<ExprTokens.Tok>> tokenCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public static String fmtNumber(double n, String fmt, int dec) {
         return Parser.fmtNumber(n, fmt, dec);
     }
@@ -90,7 +94,7 @@ public final class ExprEval {
     public String ztrap = "";
 
     public MValue eval(String src) {
-        List<ExprTokens.Tok> toks = ExprTokens.lex(src);
+        List<ExprTokens.Tok> toks = tokenCache.computeIfAbsent(src, k -> ExprTokens.lex(k));
         Parser p = new Parser(toks);
         MValue v = p.expr();
         if (!p.atEnd()) {
