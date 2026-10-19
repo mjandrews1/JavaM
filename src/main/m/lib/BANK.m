@@ -3,6 +3,7 @@ BANK ; Double-entry bank — multi-account, overdraft protection (USD)
  ; ^BANK("C",acct)=checking  ^BANK("B",acct)=bank  ^BANK("N")=txn count
  ; ^BANK("J",n)=journal  ^BANK("ADV",acct)=advances  ^BANK("FEE",acct)=fees
  ; Invariant: B(acct)-C(acct)=2*FEE(acct) per account
+ ; Store-optimized: cache balance in local, pass to LOG, no redundant GETs
 
 INIT ; Initialize bank (all accounts)
  S ^BANK("CUR")="USD"
@@ -17,10 +18,12 @@ INITA(%AC) ; Initialize one account
 
 DEP(%AC,%A) ; Deposit %A into account %AC. Returns checking or -1.
  I %A'>0 Q -1
- S ^BANK("C",%AC)=$G(^BANK("C",%AC))+%A
+ N %CB
+ S %CB=$G(^BANK("C",%AC))+%A
+ S ^BANK("C",%AC)=%CB
  S ^BANK("B",%AC)=$G(^BANK("B",%AC))+%A
- D LOG("D",%AC,%A)
- Q ^BANK("C",%AC)
+ D LOG("D",%AC,%A,%CB)
+ Q %CB
 
 WDR(%AC,%A) ; Withdraw %A from account %AC. Returns checking or -1.
  I %A'>0 Q -1
@@ -33,23 +36,23 @@ WDR(%AC,%A) ; Withdraw %A from account %AC. Returns checking or -1.
  I %WN<-100 Q -1
  S ^BANK("C",%AC)=%WN
  S ^BANK("B",%AC)=$G(^BANK("B",%AC))-%A+%WF
- I %WF>0 S ^BANK("ADV",%AC)=$G(^BANK("ADV",%AC))+1,^BANK("FEE",%AC)=$G(^BANK("FEE",%AC))+%WF
- D LOG("W",%AC,%A)
- I %WF>0 D LOG("F",%AC,%WF)
- Q ^BANK("C",%AC)
+ I %WF>0 D
+ . S ^BANK("ADV",%AC)=$G(^BANK("ADV",%AC))+1
+ . S ^BANK("FEE",%AC)=$G(^BANK("FEE",%AC))+%WF
+ . D LOG("F",%AC,%WF,%WN)
+ D LOG("W",%AC,%A,%WN)
+ Q %WN
 
-LOG(%LT,%LAC,%LA) ; Append journal entry.
+LOG(%LT,%LAC,%LA,%LB) ; Append journal entry. %LB = known balance.
  N %LGN
  S %LGN=$I(^BANK("N"))
- S ^BANK("J",%LGN)=%LT_","_%LAC_","_%LA_","_$G(^BANK("C",%LAC))
+ S ^BANK("J",%LGN)=%LT_","_%LAC_","_%LA_","_%LB
  Q
 
 BAL(%AC) ; Checking balance for account
  Q $G(^BANK("C",%AC))
 
 STAT() ; Status string
- N %SB,%SC
- S %SB=0 S %SC=0
  Q "TXN="_$G(^BANK("N"))_" CHECK="_$G(^BANK("C",0))_" BANK="_$G(^BANK("B",0))
 
 STAT2(%AC) ; Status for one account
@@ -71,12 +74,19 @@ RECONCHK
 
 BENCH(%AC,%N) ; Run %N random transactions on account %AC. Returns status.
  N %I,%T,%A
- S %I=0
- F  Q:%I'<%N  S %I=%I+1 S %T=$R(2) S %A=$R(100)+1 I %T=0 S X=$$DEP(%AC,%A)  I %T'=0 S X=$$WDR(%AC,%A)
+ F %I=1:1:%N D
+ . S %T=$R(2)
+ . S %A=$R(100)+1
+ . I %T=0 D DEP(%AC,%A)
+ . E  D WDR(%AC,%A)
  Q $$STAT2(%AC)
 
 BENCH2(%N) ; Run %N random transactions across 10 accounts. Returns status.
  N %I,%T,%A,%AC
- S %I=0
- F  Q:%I'<%N  S %I=%I+1 S %AC=$R(10) S %T=$R(2) S %A=$R(100)+1 I %T=0 S X=$$DEP(%AC,%A)  I %T'=0 S X=$$WDR(%AC,%A)
+ F %I=1:1:%N D
+ . S %AC=$R(10)
+ . S %T=$R(2)
+ . S %A=$R(100)+1
+ . I %T=0 D DEP(%AC,%A)
+ . E  D WDR(%AC,%A)
  Q "TXN="_$G(^BANK("N"))_" ACCTS=10"

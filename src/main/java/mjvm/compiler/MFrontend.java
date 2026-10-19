@@ -524,6 +524,17 @@ public final class MFrontend {
         if (prog.isEmpty() || (prog.get(prog.size()-1).op != Ir.RET && prog.get(prog.size()-1).op != Ir.RET_TO)) {
             prog.add(Ir.ret());
         }
+        // Peephole: redundant return elimination
+        // Pattern: STORE(name) ... EVAL_EXPR(name) RET_VALUE → STORE(name) ... PUSH_REG RET_VALUE
+        for (int pi = 0; pi < prog.size() - 2; pi++) {
+            Ir a = prog.get(pi);
+            Ir b = prog.get(pi + 1);
+            Ir c = prog.get(pi + 2);
+            if (a.op == Ir.STORE && b.op == Ir.EVAL_EXPR && c.op == Ir.RET_VALUE
+                    && a.name != null && a.name.equals(b.ival)) {
+                prog.set(pi + 1, Ir.pushReg());
+            }
+        }
         // Tag table for linking: tag name -> IR offset of its line (GAP-2).
         // `labels` held line indices; runExtrinsic needs IR offsets.
         java.util.Map<String, Integer> tagPc = new java.util.LinkedHashMap<>();

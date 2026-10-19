@@ -128,6 +128,68 @@ final class MFrontendCmds {
             int vs = i;
             i = MFrontendUtil.scanExprEnd(line, i, " ,");
             String val = line.substring(vs, i).trim();
+            // Peephole: detect S ^G=$G(^G)+expr → EVAL_EXPR(expr) + STORE_ADD(^G)
+            // Also: S ^G=$G(^G)-expr → EVAL_EXPR(0-expr) + STORE_ADD(^G)
+            if (name.startsWith("^") && (val.startsWith("$G(") || val.startsWith("$GET("))) {
+                // Extract the $G(...) argument and check if it matches target
+                int gl = val.indexOf('(');
+                int gc = 0;
+                int ge = gl;
+                while (ge < val.length()) {
+                    char ch = val.charAt(ge);
+                    if (ch == '(') gc++;
+                    else if (ch == ')') { gc--; if (gc == 0) break; }
+                    ge++;
+                }
+                if (ge < val.length() && ge > gl) {
+                    String gArg = val.substring(gl + 1, ge).trim();
+                    String rest = val.substring(ge + 1).trim();
+                    // Check if $G arg matches target and rest is +expr or -expr
+                    if (gArg.equals(name)) {
+                        if (rest.startsWith("+")) {
+                            String expr = rest.substring(1).trim();
+                            out.add(Ir.evalExpr(expr));
+                            out.add(Ir.storeAdd(name));
+                            i = MFrontendUtil.skipWs(line, i);
+                            if (i < line.length() && line.charAt(i) == ',') { i++; continue; }
+                            break;
+                        } else if (rest.startsWith("-")) {
+                            String expr = rest.substring(1).trim();
+                            out.add(Ir.evalExpr("0-" + expr));
+                            out.add(Ir.storeAdd(name));
+                            i = MFrontendUtil.skipWs(line, i);
+                            if (i < line.length() && line.charAt(i) == ',') { i++; continue; }
+                            break;
+                        }
+                    }
+                }
+            }
+            // Peephole: detect S %var=$I(path) → EVAL_EXPR(1) + STORE_ADD(path) + STORE(%var)
+            // Also: S %var=$I(path,amount) → EVAL_EXPR(amount) + STORE_ADD(path) + STORE(%var)
+            if ((val.startsWith("$I(") || val.startsWith("$INCREMENT(")) && name.startsWith("%")) {
+                int gl = val.indexOf('(');
+                int gc = 0;
+                int ge = gl;
+                while (ge < val.length()) {
+                    char ch = val.charAt(ge);
+                    if (ch == '(') gc++;
+                    else if (ch == ')') { gc--; if (gc == 0) break; }
+                    ge++;
+                }
+                if (ge > gl) {
+                    String inner = val.substring(gl + 1, ge).trim();
+                    // inner is "path" or "path,amount"
+                    int comma = inner.indexOf(',');
+                    String path = comma >= 0 ? inner.substring(0, comma).trim() : inner;
+                    String amount = comma >= 0 ? inner.substring(comma + 1).trim() : "1";
+                    out.add(Ir.evalExpr(amount));
+                    out.add(Ir.storeAdd(path));
+                    out.add(Ir.store(name));
+                    i = MFrontendUtil.skipWs(line, i);
+                    if (i < line.length() && line.charAt(i) == ',') { i++; continue; }
+                    break;
+                }
+            }
             if (val.indexOf('$') >= 0 || val.indexOf('@') >= 0 || val.indexOf('?') > 0) {
                 out.add(Ir.evalExpr(val));
             } else {

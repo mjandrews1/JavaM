@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Local + global trees for J2.
@@ -33,6 +34,7 @@ public final class MStore implements StoreApi {
 
     private final Map<String, Node> locals = new ConcurrentHashMap<>();
     private final Map<String, Node> globals = new ConcurrentHashMap<>();
+    private final AtomicLong ops = new AtomicLong(0);
     /** Displaced local nodes for NEW restore. */
     private final List<Map<String, Node>> scopeStack = new ArrayList<>();
 
@@ -73,18 +75,37 @@ public final class MStore implements StoreApi {
         return n;
     }
 
+    public long storeOps() {
+        return ops.get();
+    }
+
     public MValue get(List<String> path, boolean global) {
+        if (global) ops.incrementAndGet();
         Node n = find(path, global);
         return n != null && n.hasValue ? n.value : MValue.EMPTY;
     }
 
     public void set(List<String> path, boolean global, MValue v) {
+        if (global) ops.incrementAndGet();
         Node n = node(path, global);
         n.value = v;
         n.hasValue = true;
     }
 
+    /** Atomic increment: single node update, counts as 1 store op. */
+    public MValue increment(List<String> path, boolean global, double amount) {
+        if (global) ops.incrementAndGet();
+        Node n = node(path, global);
+        double cur = n.hasValue ? n.value.asNum() : 0;
+        double next = cur + amount;
+        MValue nv = MValue.ofNumber(next);
+        n.value = nv;
+        n.hasValue = true;
+        return nv;
+    }
+
     public void kill(List<String> path, boolean global) {
+        if (global) ops.incrementAndGet();
         if (path.size() == 1) {
             root(global).remove(path.get(0));
             return;
