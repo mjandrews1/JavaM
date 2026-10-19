@@ -90,6 +90,7 @@ public final class MFrontend {
                 }
                 if (hasPostcond) {
                     out.set(postJ0, Ir.jmp0(out.size()));
+                    continue; // postcond false → fall through to next command
                 }
                 break;
             } else if (cmd.equals("H") || cmd.equals("HALT") || cmd.equals("HANG")) {
@@ -374,15 +375,10 @@ public final class MFrontend {
                     }
                 }
             }
-            // dotted-block continuation: strip leading dots and treat as body
+            // dotted-block continuation: keep as separate body (dots preserved for merger)
             if (!raw.isEmpty() && raw.trim().startsWith(".")) {
-                String d = raw.trim();
-                while (d.startsWith(".")) {
-                    d = d.substring(1);
-                    if (d.startsWith(" ")) d = d.substring(1);
-                }
                 tags.add(null);
-                bodies.add(d);
+                bodies.add(raw.trim());
                 continue;
             }
             tags.add(tag);
@@ -392,13 +388,18 @@ public final class MFrontend {
         // Argumentless DO + dotted block: D\n . cmd  →  D ZDn  +  tag ZDn
         for (int i = 0; i < bodies.size(); i++) {
             String b = bodies.get(i).trim();
-            if (!(b.equals("D") || b.equals("DO"))) continue;
+            // match standalone D/DO or lines ending with argless D (e.g. "F ... D")
+            boolean isArglessDo = b.equals("D") || b.equals("DO") || b.endsWith(" D") || b.endsWith(" DO");
+            if (!isArglessDo) continue;
             int j = i + 1;
             StringBuilder blk = new StringBuilder();
             List<Integer> dots = new ArrayList<>();
             while (j < bodies.size() && bodies.get(j).trim().startsWith(".")) {
-                String d = bodies.get(j).trim().substring(1);
-                if (d.startsWith(" ")) d = d.substring(1);
+                String d = bodies.get(j).trim();
+                while (d.startsWith(".")) {
+                    d = d.substring(1);
+                    if (d.startsWith(" ")) d = d.substring(1);
+                }
                 if (blk.length() > 0) blk.append(' ');
                 blk.append(d);
                 dots.add(j);
@@ -409,7 +410,13 @@ public final class MFrontend {
                 tags.add(syn);
                 bodies.add(blk.toString());
                 labels.put(syn, tags.size() - 1);
-                bodies.set(i, "D " + syn);
+                // standalone D/DO → replace entirely; trailing D in "F ... D" → keep prefix
+                if (b.equals("D") || b.equals("DO")) {
+                    bodies.set(i, "D " + syn);
+                } else {
+                    int dPos = b.lastIndexOf(" D");
+                    bodies.set(i, b.substring(0, dPos) + " D " + syn);
+                }
                 for (int k : dots) bodies.set(k, "");
             }
         }
@@ -616,13 +623,41 @@ public final class MFrontend {
     }
 
     private int compileArglessFor(String line, int i, List<Ir> out) {
-        // F  body — infinite loop; body is the rest of the line
-        // Emit: loop start, compile body, jump back
-        int loopStart = out.size();
+        // F [Q:cond] body — argless FOR with optional exit condition
+        // Q:cond at start = loop guard (checked before each iteration)
+        i = MFrontendUtil.skipWs(line, i);
         String body = line.substring(i);
-        compileInto(body, out);
-        out.add(Ir.jmp(loopStart));
+        // peel leading Q:cond as loop guard
+        if (body.length() > 2 && (body.startsWith("Q:") || body.startsWith("QUIT:"))) {
+            int colon = body.indexOf(':');
+            int exprEnd = MFrontendUtil.scanExprEnd(body, colon + 1, " ");
+            String cond = body.substring(colon + 1, exprEnd).trim();
+            body = body.substring(exprEnd).trim();
+            int loopStart = out.size();
+            out.add(Ir.evalExpr(cond));
+            out.add(Ir.jmp0(-1)); // false → enter body
+            out.add(Ir.jmp(-1));  // true → exit loop (patched below)
+            int exitJmp = out.size() - 1;
+            int bodyStart = out.size();
+            int outBefore = out.size();
+            compileInto(body, out);
+            shiftPatches(outBefore);
+            out.add(Ir.jmp(loopStart));
+            out.set(exitJmp, Ir.jmp(out.size()));
+            out.set(loopStart + 1, Ir.jmp0(bodyStart));
+        } else {
+            int loopStart = out.size();
+            int outBefore = out.size();
+            compileInto(body, out);
+            shiftPatches(outBefore);
+            out.add(Ir.jmp(loopStart));
+        }
         return line.length();
+    }
+
+    private void shiftPatches(int offset) {
+        if (activePatches == null || offset == 0) return;
+        for (int[] pk : activePatches) pk[1] += offset;
     }
 
     private int compileForSpec(String line, int varStart, List<Ir> out, String var) {
