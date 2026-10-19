@@ -20,6 +20,10 @@ build/jvmumps/LineInterp$RtLine.class
 build/mjvm/runtime/IrMachine$H.class
 build/mjvm/runtime/MRuntime$*.class
 
+# Generated docs / caches
+docs/javadoc/
+tools/__pycache__/
+
 # OS / editor
 .DS_Store
 *.dSYM/
