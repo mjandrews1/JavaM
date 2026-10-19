@@ -173,13 +173,15 @@ Corpus gate **`MATCH=131 MISS=8 ERR=0`** (miss set = RSM upstream eight).
 ## [Unreleased]
 
 ### Added
-- **#N** what — why
+- **Bank simulator** — `src/main/m/lib/BANK.m`: double-entry bank with overdraft protection ($3 advance fee, −100 floor, immutable journal). 61 boundary tests.
+- **Dafny boundary smoke** — `DafnyBoundarySmoke.java`: 209 test cases covering MSemantics/MPattern/MControl/PEMDAS lemmas. Dafny lemma coverage 91% (139/153).
+- **Postconditional SET** — `S:cond var=val` support in MFrontend (assign only if cond).
 
 ### Fixed
-- **#N** what — why
+- **`compileInto` JMP/JMP0 offset** — local jump targets were not offset when copied into parent list, causing self-loops in FOR bodies with postcond SET or IF.
 
 ### Docs
-- **#N** what — why
+- **COVERAGE-MATRIX.md** — Dafny lemma coverage table (153 lemmas, 139 tested, 91%).
 ```
 
 Every user-visible PR should append here (PR template checkbox).
