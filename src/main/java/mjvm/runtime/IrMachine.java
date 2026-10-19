@@ -75,11 +75,19 @@ public final class IrMachine {
         return run(prog, rt, startPc, args);
     }
 
+    /** Thread-local value stack pool — avoids allocating 256-element array per call. */
+    private static final ThreadLocal<MValue[]> VALS_POOL = ThreadLocal.withInitial(() -> new MValue[256]);
+    /** Thread-local return-address stack — avoids ArrayDeque allocation per call. */
+    private static final ThreadLocal<int[]> RETS_POOL = ThreadLocal.withInitial(() -> new int[64]);
+    /** Thread-local args buffer — avoids allocating MValue[] per CALL. */
+    private static final ThreadLocal<MValue[]> ARGS_POOL = ThreadLocal.withInitial(() -> new MValue[16]);
+
     private static jvmumps.MValue run(List<Ir> prog, MRuntime rt, int startPc, MValue[] args) {
-        MValue[] vals = new MValue[256];
+        MValue[] vals = VALS_POOL.get();
         int sp = 0;
         int pc = startPc;
-        java.util.ArrayDeque<Integer> rets = new java.util.ArrayDeque<>();
+        int[] rets = RETS_POOL.get();
+        int rsp = 0;
         MValue lastStored = MValue.EMPTY;
         final boolean extrinsic = args != null;
         if (extrinsic) {
@@ -196,18 +204,15 @@ public final class IrMachine {
                     }
                 }
                 case Ir.CALL -> {
+                    int argc = op.iarg;
+                    MValue[] argsBuf = ARGS_POOL.get();
+                    for (int k = argc - 1; k >= 0; k--) argsBuf[k] = vals[--sp];
                     if (op.name != null && op.name.startsWith("$")) {
-                        // extrinsic $$fn — pop argc args, run tag via nested program
-                        int argc = op.iarg;
-                        MValue[] argv = new MValue[argc];
-                        for (int k = argc - 1; k >= 0; k--) argv[k] = vals[--sp];
-                        vals[sp++] = rt.callExtrinsic(op.name.substring(1), argv);
+                        // extrinsic $$fn — run tag via nested program
+                        vals[sp++] = rt.callExtrinsic(op.name.substring(1), argsBuf);
                     } else {
-                        // DO tag — pop argc args, run tag via nested program
-                        int argc = op.iarg;
-                        MValue[] argv = new MValue[argc];
-                        for (int k = argc - 1; k >= 0; k--) argv[k] = vals[--sp];
-                        rt.call(op.name, argv);
+                        // DO tag — run tag via nested program
+                        rt.call(op.name, argsBuf);
                     }
                 }
                 case Ir.OPEN -> {
@@ -262,27 +267,27 @@ public final class IrMachine {
                     rt.setPiece(op.name, parts[0], Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), v.asStr());
                 }
                 case Ir.CALL_PC -> {
-                    rets.push(pc + 1);
+                    rets[rsp++] = pc + 1;
                     pc = op.iarg;
                     continue;
                 }
                 case Ir.RET_TO -> {
-                    if (rets.isEmpty()) return extrinsic ? rt.takeExtrinsicValue() : null;
-                    pc = rets.pop();
+                    if (rsp == 0) return extrinsic ? rt.takeExtrinsicValue() : null;
+                    pc = rets[--rsp];
                     continue;
                 }
                 case Ir.RET_VALUE -> {
                     // Q expr — the value becomes the extrinsic return value
                     if (sp > 0) rt.setExtrinsicValue(vals[--sp]);
-                    if (!rets.isEmpty()) {
-                        pc = rets.pop();
+                    if (rsp > 0) {
+                        pc = rets[--rsp];
                         continue;
                     }
                     return extrinsic ? rt.takeExtrinsicValue() : null;
                 }
                 case Ir.RET -> {
-                    if (!rets.isEmpty()) {
-                        pc = rets.pop();
+                    if (rsp > 0) {
+                        pc = rets[--rsp];
                         continue;
                     }
                     return extrinsic ? rt.takeExtrinsicValue() : null;
