@@ -3,62 +3,47 @@ package jvmumps;
 import java.util.List;
 
 /**
- * Persistence SPI for M globals and locals (JvMumps / mJVM shared).
+ * Full persistence SPI — extends all capability interfaces.
  *
- * Implementations: {@link MStore} (in-memory) and {@link SqlStore} (SQLite).
- * {@code path} is subscript chain; {@code global} selects {@code ^NAME} vs local.
+ * <p><b>Capability split (issue #201):</b>
+ * <ul>
+ *   <li>{@link StoreCore} — get/set/kill/increment (all backends)
+ *   <li>{@link StoreOrder} — order/data/queryNext (MStore, Cdb2Store, SqlStore for CI)
+ *   <li>{@link StoreLock} — lockAcquire/lockRelease (Cdb2Store only)
+ *   <li>{@link StoreTx} — newScope/merge (Cdb2Store only)
+ * </ul>
+ *
+ * <p>Production engines: {@link MStore} (dev/test/cache) + {@link Cdb2Store} (tsx plane).
+ * {@link SqlStore} is a thin CI/conformance wrapper — no new features.
+ *
+ * <p>New backends should implement {@link StoreCore} only, then add
+ * {@link StoreOrder}/{@link StoreLock}/{@link StoreTx} as needed.
+ *
+ * <p>{@code path} is subscript chain; {@code global} selects {@code ^NAME} vs local.
  * Values are {@link MValue}; numeric strings are stored as text.
  */
-public interface StoreApi {
+public interface StoreApi extends StoreCore, StoreOrder, StoreLock, StoreTx {
 
-    /** Number of store operations (GET + SET + KILL) performed. */
-    default long storeOps() { return 0; }
-    /** GET: value at path, or empty if undefined. */
-    MValue get(List<String> path, boolean global);
+    // StoreCore: get, set, kill, increment, storeOps
+    // StoreOrder: data, order, queryNext
+    // StoreLock: lockAcquire, lockRelease
+    // StoreTx: newScope, merge
 
-    /** SET: write value at path (creates ancestors). */
-    void set(List<String> path, boolean global, MValue v);
-
-    /** KILL: delete node and descendants at path. */
-    void kill(List<String> path, boolean global);
-
-    /** Atomic increment: read current value, add amount, write back. Returns new value. */
-    default MValue increment(List<String> path, boolean global, double amount) {
-        MValue cur = get(path, global);
-        double v = cur.asNum() + amount;
-        MValue nv = MValue.ofNumber(v);
-        set(path, global, nv);
-        return nv;
-    }
-
-    /** $DATA: 0 none · 1 value · 10 descendants · 11 both. */
-    int data(List<String> path, boolean global);
-
-    /** $QUERY: next node in collation order (full path string) or "". */
-    String queryNext(List<String> path, boolean global, int dir);
-
-    /** $ORDER among children of path (last subscript is cursor). */
-    String order(List<String> path, boolean global, double dir);
-
-    /** NEW: drop named locals for a new stack frame. */
-    void newScope(List<String> names);
-
-    /** MERGE: copy src subtree into dst (M MERGE). */
-    void merge(List<String> dst, boolean dGlobal, List<String> src, boolean sGlobal);
-
-    /**
-     * Cross-process lock acquire.
-     *
-     * <p><b>Polarity:</b> {@code true} = lock is held by {@code pid} (including
-     * idempotent re-acquire). {@code false} = timeout / denied. Tests must use
-     * {@code if (!lockAcquire(...)) throw} to assert success and
-     * {@code if (lockAcquire(...)) throw} to assert the lock stayed blocked.
-     */
+    // Backward-compatible defaults for optional capabilities
+    @Override
     default boolean lockAcquire(String key, String pid, long timeoutMs) {
         return true;
     }
 
-    /** Cross-process lock release (full unlock for {@code pid}). */
+    @Override
     default void lockRelease(String key, String pid) {}
 
+    @Override
+    default void newScope(List<String> names) {}
+
+    @Override
+    default void merge(List<String> dst, boolean dGlobal, List<String> src, boolean sGlobal) {
+        MValue v = get(src, sGlobal);
+        if (v != MValue.EMPTY) set(dst, dGlobal, v);
+    }
 }

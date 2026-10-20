@@ -9,7 +9,13 @@ import java.util.List;
  */
 public class OrderHangSmoke {
     public static void main(String[] args) throws Exception {
-        var s = new Cdb2Store("tools/cdb2pipe", "testdb", "local");
+        String pipe = System.getenv("CDB2PIPE");
+        if (pipe == null || pipe.isEmpty()) pipe = "tools/cdb2pipe";
+        if (!new java.io.File(pipe).exists()) {
+            System.out.println("SKIP OrderHangSmoke (no cdb2pipe; set CDB2PIPE)");
+            return;
+        }
+        var s = new Cdb2Store(pipe, "testdb", "local");
         try {
             // Build tree: ^G("A") with children, ^G("B"), ^G("B","X") with children, ^G("C")
             s.set(List.of("G", "A"), true, MValue.ofString("a"));
