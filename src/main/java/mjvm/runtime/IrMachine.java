@@ -89,6 +89,35 @@ public final class IrMachine {
         int[] rets = RETS_POOL.get();
         int rsp = 0;
         MValue lastStored = MValue.EMPTY;
+
+        // Pre-read cache: batch all global LOADs in this program into one getBatch()
+        java.util.Map<String, jvmumps.MValue> preRead = new java.util.HashMap<>();
+        int preReadHits = 0;
+        if (rt.getStore() instanceof jvmumps.StoreCore sc) {
+            // Collect all global variable names from LOAD ops
+            java.util.LinkedHashSet<String> globalNames = new java.util.LinkedHashSet<>();
+            for (Ir iop : prog) {
+                if (iop.op == Ir.LOAD && iop.name != null && iop.name.startsWith("^")) {
+                    globalNames.add(iop.name);
+                }
+            }
+            if (globalNames.size() > 1) {
+                // Batch-read all globals in one round-trip
+                java.util.List<java.util.List<String>> paths = new java.util.ArrayList<>(globalNames.size());
+                for (String gn : globalNames) {
+                    paths.add(java.util.List.of(gn.substring(1)));
+                }
+                try {
+                    jvmumps.MValue[] batch = sc.getBatch(paths, true);
+                    int bi = 0;
+                    for (String gn : globalNames) {
+                        preRead.put(gn, batch[bi++]);
+                    }
+                } catch (Exception e) {
+                    // Pre-read failed — fall back to individual gets
+                }
+            }
+        }
         final boolean extrinsic = args != null;
         if (extrinsic) {
             for (MValue a : args) vals[sp++] = a == null ? MValue.EMPTY : a;
@@ -101,26 +130,11 @@ public final class IrMachine {
                     else vals[sp++] = MValue.ofString(op.ival == null ? "" : op.ival);
                 }
                 case Ir.LOAD -> {
-                    // Look-ahead: batch consecutive global LOADs into one getBatch()
-                    int batchEnd = pc;
-                    while (batchEnd + 1 < prog.size()) {
-                        Ir next = prog.get(batchEnd + 1);
-                        if (next.op != Ir.LOAD || next.name == null || !next.name.startsWith("^")) break;
-                        batchEnd++;
-                    }
-                    if (batchEnd > pc && rt.getStore() instanceof jvmumps.StoreCore sc) {
-                        // Batch multiple global LOADs
-                        int n = batchEnd - pc + 1;
-                        java.util.List<java.util.List<String>> paths = new java.util.ArrayList<>(n);
-                        for (int bi = pc; bi <= batchEnd; bi++) {
-                            Ir lop = prog.get(bi);
-                            paths.add(java.util.List.of(lop.name.substring(1))); // strip ^
-                        }
-                        jvmumps.MValue[] batch = sc.getBatch(paths, true);
-                        for (jvmumps.MValue bv : batch) {
-                            vals[sp++] = bv;
-                        }
-                        pc = batchEnd;
+                    // Check pre-read cache first (batched global reads)
+                    jvmumps.MValue cached = preRead.get(op.name);
+                    if (cached != null) {
+                        vals[sp++] = cached;
+                        preReadHits++;
                     } else {
                         try {
                             vals[sp++] = rt.getVar(op.name);
@@ -137,6 +151,8 @@ public final class IrMachine {
                     rt.setVar(op.name, v);
                 }
                 case Ir.STORE -> {
+                    // Invalidate pre-read cache for this key
+                    if (op.name != null) preRead.remove(op.name);
                     MValue v = vals[--sp];
                     lastStored = v;
                     if (op.name != null && op.name.startsWith("@")) {
@@ -149,6 +165,7 @@ public final class IrMachine {
                     }
                 }
                 case Ir.STORE_ADD -> {
+                    if (op.name != null) preRead.remove(op.name);
                     // Atomic increment: pop amount, use store.increment for single-op
                     MValue inc = vals[--sp];
                     MValue nv = rt.incrementVar(op.name, inc.asNum());
