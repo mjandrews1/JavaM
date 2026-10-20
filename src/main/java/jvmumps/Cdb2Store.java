@@ -32,6 +32,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * is request/response). {@link #set} group-commits via SETB; {@link #close} is
  * idempotent and always reaps the pipe process.
  */
+/**
+ * @deprecated Cdb2Store is deprecated in mJVM. Use H2Store or MapDBStore for
+ * single-node persistence. Cdb2Store retained for reference only.
+ * Comdb2 infrastructure is frozen (tsx plane offline).
+ */
+@Deprecated
 public final class Cdb2Store implements StoreApi {
     static final char SEP = 1;
 
