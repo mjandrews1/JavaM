@@ -363,6 +363,116 @@ static void cmd_order(char **tok, int ntok) {
     free(name); free(sk); free(skhi);
 }
 
+
+/* GETB <n> then n lines: <hexk>
+ * Returns n response lines: VAL <hexval> <isnum> | EMPTY
+ * Uses single WHERE k IN (...) query for all keys. */
+static void cmd_getb(char **tok, int ntok) {
+    if (ntok < 2) { printf("ERR bad GETB\n"); return; }
+    int n = atoi(tok[1]);
+    if (n < 1 || n > 1000) { printf("ERR bad GETB n\n"); return; }
+
+    /* Gather keys */
+    char line[8192];
+    char **ks = calloc(n, sizeof(char *));
+    int *kls = calloc(n, sizeof(int));
+    int got = 0;
+    for (int i = 0; i < n; i++) {
+        if (!fgets(line, sizeof(line), stdin)) { printf("ERR GETB eof\n"); goto out; }
+        size_t L = strlen(line);
+        while (L && (line[L-1]=='\n' || line[L-1]=='\r')) line[--L]=0;
+        char *t[2];
+        int nt = split_tabs(line, t, 2);
+        if (nt < 1) { ks[i] = NULL; kls[i] = -1; continue; }
+        kls[i] = unhex(t[0], &ks[i]);
+        if (kls[i] < 0) { ks[i] = NULL; }
+        got++;
+    }
+
+    /* Build single query: SELECT k, val, isnum FROM mnodes WHERE k IN (?,?,...) */
+    {
+        size_t cap = 128 + (size_t)n * 4;
+        char *sql = malloc(cap);
+        if (!sql) { printf("ERR oom\n"); goto out; }
+        strcpy(sql, "SELECT k, val, isnum FROM mnodes WHERE k IN (");
+        for (int i = 0; i < n; i++) {
+            if (i) strcat(sql, ",");
+            strcat(sql, "?");
+        }
+        strcat(sql, ")");
+
+        /* Bind all keys positionally */
+        cdb2_clearbindings(db);
+        int bound = 0;
+        for (int i = 0; i < n; i++) {
+            if (ks[i] == NULL) continue;
+            if (cdb2_bind_index(db, i + 1, CDB2_CSTRING, ks[i], kls[i])) {
+                printf("ERR bind %d\n", i);
+                free(sql);
+                goto out;
+            }
+            bound++;
+        }
+
+        if (cdb2_run_statement(db, sql) != 0) {
+            printf("ERR GETB rc=%s\n", cdb2_errstr(db));
+            free(sql);
+            goto out;
+        }
+        free(sql);
+
+        /* Store results in a map keyed by k */
+        /* For simplicity, collect all rows then match */
+        /* Actually, just emit in order — but SQL IN doesn't guarantee order */
+        /* So collect into arrays */
+        char **vals = calloc(n, sizeof(char *));
+        int *vlens = calloc(n, sizeof(int));
+        int *isnums = calloc(n, sizeof(int));
+        char **found_keys = calloc(n, sizeof(char *));
+        int *fkls = calloc(n, sizeof(int));
+        int nrows = 0;
+
+        while (cdb2_next_record(db) == CDB2_OK && nrows < n) {
+            const char *k = cdb2_column_value(db, 0);
+            const char *val = cdb2_column_value(db, 1);
+            int kl = k ? (int)strlen(k) : 0;
+            int vlen = val ? (int)strlen(val) : 0;
+            int isnum = 0;
+            const void *np = cdb2_column_value(db, 2);
+            if (np) isnum = *(int *)np;
+            found_keys[nrows] = strdup(k ? k : "");
+            fkls[nrows] = kl;
+            vals[nrows] = strdup(val ? val : "");
+            vlens[nrows] = vlen;
+            isnums[nrows] = isnum;
+            nrows++;
+        }
+
+        /* Emit results in request order */
+        for (int i = 0; i < n; i++) {
+            if (ks[i] == NULL) { printf("EMPTY\n"); continue; }
+            int found = 0;
+            for (int j = 0; j < nrows; j++) {
+                if (fkls[j] == kls[i] && memcmp(found_keys[j], ks[i], kls[i]) == 0) {
+                    printf("VAL ");
+                    phex(vals[j], vlens[j]);
+                    printf(" %d\n", isnums[j]);
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) printf("EMPTY\n");
+        }
+
+        for (int j = 0; j < nrows; j++) { free(found_keys[j]); free(vals[j]); }
+        free(vals); free(vlens); free(isnums); free(found_keys); free(fkls);
+    }
+
+out:
+    for (int i = 0; i < n; i++) free(ks[i]);
+    free(ks); free(kls);
+}
+
 static void cmd_data(char **tok, int ntok) {
     if (ntok < 2) { printf("ERR bad DATA\n"); return; }
     char *k;
@@ -470,6 +580,7 @@ int main(int argc, char **argv) {
             if (run("ROLLBACK") < 0) { drain(); } else { drain(); in_txn = 0; } printf("OK\n");
         }
         else if (!strcmp(tok[0], "GET")) cmd_get(tok, ntok);
+        else if (!strcmp(tok[0], "GETB")) cmd_getb(tok, ntok);
         else if (!strcmp(tok[0], "ORDER")) cmd_order(tok, ntok);
         else if (!strcmp(tok[0], "DATA")) cmd_data(tok, ntok);
         else if (!strcmp(tok[0], "KILL")) cmd_kill(tok, ntok);

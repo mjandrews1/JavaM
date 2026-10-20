@@ -26,6 +26,19 @@ public interface StoreCore {
         return nv;
     }
 
+
+    /**
+     * Batch GET: read multiple keys in one round-trip where possible.
+     * Default implementation loops individual gets. Backends override for efficiency.
+     */
+    default MValue[] getBatch(List<List<String>> paths, boolean global) {
+        MValue[] results = new MValue[paths.size()];
+        for (int i = 0; i < paths.size(); i++) {
+            results[i] = get(paths.get(i), global);
+        }
+        return results;
+    }
+
     /** Number of store operations (GET + SET + KILL) performed. */
     default long storeOps() { return 0; }
 }

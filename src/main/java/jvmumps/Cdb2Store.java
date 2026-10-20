@@ -184,6 +184,70 @@ public final class Cdb2Store implements StoreApi {
         }
     }
 
+
+    /**
+     * Batch GET: read multiple keys in one pipe round-trip.
+     * Returns MValue array in same order as keys. Empty for missing keys.
+     * Used by bank DEP/WDR to read C, B, N in one round-trip instead of three.
+     */
+    public MValue[] getBatch(List<List<String>> paths, boolean global) {
+        int n = paths.size();
+        MValue[] results = new MValue[n];
+        synchronized (this) {
+            // Check write cache first
+            java.util.List<Integer> misses = new java.util.ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                String hk = hex(key(paths.get(i).get(0), paths.get(i)));
+                PendingRow pr = pending.get(hk);
+                if (pr != null) {
+                    results[i] = pr.val;
+                } else {
+                    misses.add(i);
+                }
+            }
+            if (misses.isEmpty()) return results;
+
+            // Build GETB command for cache misses
+            StringBuilder sb = new StringBuilder("GETB\t").append(misses.size()).append('\n');
+            for (int idx : misses) {
+                sb.append(hex(key(paths.get(idx).get(0), paths.get(idx)))).append('\n');
+            }
+
+            // Pipeline: flush pending SETs + GETB in one write
+            String resp;
+            if (!pending.isEmpty()) {
+                int pn = pending.size();
+                StringBuilder flushSb = new StringBuilder("SETB\t").append(pn).append('\n');
+                for (PendingRow pr : pending.values()) {
+                    flushSb.append(pr.row).append('\n');
+                }
+                pending.clear();
+                send(flushSb.toString());
+                send(sb.toString());
+                String flushResp = recv();
+                if (!flushResp.startsWith("OK")) throw new MError("cdb2 setb: " + flushResp);
+            } else {
+                send(sb.toString());
+                try { in.flush(); } catch (java.io.IOException e) { throw new MError("cdb2pipe io: " + e); }
+            }
+
+            // Read n responses
+            for (int j = 0; j < misses.size(); j++) {
+                String r = recv();
+                int idx = misses.get(j);
+                if (r.startsWith("VAL ")) {
+                    String[] p = r.split(" ");
+                    String v = unhex(p[1]);
+                    int isnum = Integer.parseInt(p[2]);
+                    results[idx] = isnum == 1 ? MValue.ofNumber(ExprEval.toNum(v)) : MValue.ofString(v);
+                } else {
+                    results[idx] = MValue.EMPTY;
+                }
+            }
+        }
+        return results;
+    }
+
     /** Group-commit pending SETs (write buffer). Safe to call anytime. */
     public synchronized void flush() {
         flushLocked();
