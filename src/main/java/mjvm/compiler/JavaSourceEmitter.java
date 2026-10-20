@@ -104,7 +104,18 @@ public final class JavaSourceEmitter {
                     sb.append("    rt.call(\"").append(esc).append("\", ").append(op.iarg).append(");\n");
                 }
                 case mjvm.ir.Ir.EVAL_EXPR -> {
-                    sb.append("    s[p++] = rt.evalExpr(\"").append(esc(op.ival)).append("\");\n");
+                    String compiled = MExprJava.compile(op.ival, "s", "p");
+                    if (compiled != null) {
+                        sb.append(compiled);
+                    } else {
+                        // Try function call: $$fn(args) or fn^RTN(args)
+                        String fn = MExprJava.compileFuncCall(op.ival, "s", "p");
+                        if (fn != null) {
+                            sb.append(fn);
+                        } else {
+                            sb.append("    s[p++] = rt.evalExpr(\"").append(esc(op.ival)).append("\");\n");
+                        }
+                    }
                 }
                 case mjvm.ir.Ir.BIND -> {
                     sb.append("    { jvmumps.MValue bv = p > 0 ? s[--p] : jvmumps.MValue.EMPTY; rt.setVar(\"").append(esc(op.name)).append("\", bv); }\n");
@@ -118,7 +129,12 @@ public final class JavaSourceEmitter {
             || prog.get(prog.size()-1).op == mjvm.ir.Ir.RET_VALUE);
         if (!lastIsRet) sb.append("    break L_root;\n");
         sb.append("  }\n  }\n}\n");
-        return sb.toString();
+        String result = sb.toString();
+        if (System.getenv("JAVASRC_DEBUG") != null) {
+            System.err.println("--- generated ---");
+            System.err.println(result);
+        }
+        return result;
     }
 
     static String esc(String s) {
