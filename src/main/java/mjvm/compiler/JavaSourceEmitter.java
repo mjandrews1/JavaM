@@ -12,13 +12,30 @@ import javax.tools.*;
  */
 public final class JavaSourceEmitter {
 
-    /** Compile IR to a Runnable class via Java source generation. */
+    /** Class bytes cache — keyed by source hash. Avoids re-running javac. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, byte[]> CLASS_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<String, Class<?>> LOADED_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Compile IR to a Runnable class via Java source generation (cached). */
     public static Runnable compile(List<mjvm.ir.Ir> prog, String className,
                                     mjvm.runtime.MRuntime rt) throws Exception {
         String src = generate(prog, className);
-        byte[] classBytes = compileSource(src, className);
-        Class<?> cl = new DefLoader(JavaSourceEmitter.class.getClassLoader())
-                .define(className, classBytes);
+        String hash = Integer.toHexString(src.hashCode());
+        // Check loaded class cache first (fastest)
+        Class<?> cl = LOADED_CACHE.get(hash);
+        if (cl == null) {
+            // Check class bytes cache (skip javac)
+            byte[] classBytes = CLASS_CACHE.get(hash);
+            if (classBytes == null) {
+                classBytes = compileSource(src, className);
+                CLASS_CACHE.put(hash, classBytes);
+            }
+            cl = new DefLoader(JavaSourceEmitter.class.getClassLoader())
+                    .define(className, classBytes);
+            LOADED_CACHE.put(hash, cl);
+        }
         return (Runnable) cl.getConstructor(mjvm.runtime.MRuntime.class).newInstance(rt);
     }
 

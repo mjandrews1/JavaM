@@ -57,12 +57,9 @@ public final class BankConcurrencyBench {
         }
         var benchProg = fe.compileProgram(code);
         if (JIT) {
-            // JIT-compile the shell. The hot loop (BANK.m BENCH) still runs
-            // through rt.call() → IR interpreter. To get full JIT benefit,
-            // BANK.m functions need compilation too (future work).
-            // Pre-warm: compile once, then run (javac cost amortized across calls).
-            String clsName = "BenchJIT_" + corner + "_" + n + "_" + instanceId;
-            var runner = mjvm.compiler.JavaSourceEmitter.compile(benchProg, clsName, rt);
+            // Stable class name — source hash is the cache key, not the class name.
+            // First call runs javac, subsequent calls hit the cache.
+            var runner = mjvm.compiler.JavaSourceEmitter.compile(benchProg, "BenchJIT", rt);
             runner.run();
         } else {
             mjvm.runtime.IrMachine.run(benchProg, rt, fe.lastTags());
