@@ -41,6 +41,17 @@
 
 ---
 
+## Phase 3.5: Java-native storage backends
+
+| Order | Issue | What | Est. improvement | Status |
+|-------|-------|------|-----------------|--------|
+| **3.5.1** | [#207](https://github.com/mjandrews1/JavaM/issues/207) H2 MVStore backend | Pure Java B-tree, ordered keys | **10-50x over SQLite** | ⬜ |
+| **3.5.2** | [#208](https://github.com/mjandrews1/JavaM/issues/208) MapDB backend | Pure Java disk-based B-tree | **10-50x over SQLite** | ⬜ |
+
+**After Phase 3.5:** Three production engines (MStore + H2/MapDB + Cdb2Store). SqlStore stays CI-only.
+
+---
+
 ## Phase 4: Engine consolidation
 
 | Order | Issue | What | Status |
@@ -78,9 +89,13 @@
 
 ## Progress
 
-- **Phase 1:** Issues filed (#203, #204, #195). Not started.
-- **Phase 2:** Issues filed (#194, #190, #191). Not started.
-- **Phase 3:** Issues filed (#186, #196, #189). Not started.
-- **Phase 4:** Issues filed (#197, #192, #193). #198 done (PR #202).
+- **Phase 1:** #203 ✅ (GETB 4.7x), #204 ✅ (SETB txn 7-18x), #195 ⬜
+- **Phase 2:** #194 ✅ (split stack -10%), #190 ⬜, #191 ⬜
+- **Phase 3:** #186 🔄 (depth guard half-done), #196 ✅ (bytecode caching), #189 (superseded by transpiler)
+- **Phase 3.5:** #207 ⬜ (H2 MVStore), #208 ⬜ (MapDB)
+- **Phase 4:** #197 ⬜, #192 (superseded by transpiler), #193 ⬜
+
+**Bank DEP baseline (U02, Cdb2Store):** 3144 → 2823 ms (-10%)
+**MStore JIT:** 39x on Mac, 7x on U02
 
 **Last updated:** 2026-10-20
