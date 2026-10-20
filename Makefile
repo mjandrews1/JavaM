@@ -16,7 +16,7 @@ else
 endif
 RELEASE ?= 21
 OUT   := build
-LIBS  := lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar
+LIBS  := lib/sqlite-jdbc.jar:lib/slf4j-api.jar:lib/slf4j-nop.jar:lib/h2.jar:lib/abcl.jar:lib/abcl-contrib.jar:lib/mapdb.jar:lib/elsa.jar:lib/lz4-java.jar:lib/guava.jar:lib/kotlin-stdlib.jar:lib/eclipse-collections-api.jar:lib/eclipse-collections.jar
 CP    := $(OUT):$(LIBS)
 CORPUS ?= ../pymumps/tests/conformance.json
 # FileMan Tier A (jvmumps#32) — env, never hardcoded in tests.
