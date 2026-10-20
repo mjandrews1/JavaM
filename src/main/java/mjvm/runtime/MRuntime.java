@@ -15,6 +15,9 @@ import jvmumps.StoreApi;
  */
 public final class MRuntime {
     private final StoreApi store;
+
+    /** Access the underlying store (for batch operations). */
+    public StoreApi getStore() { return store; }
     private final StringBuilder out = new StringBuilder();
     private final Map<String, MValue> locals = new HashMap<>();
     private boolean quit;

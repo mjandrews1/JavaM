@@ -337,11 +337,35 @@ public final class MFrontend {
     }
 
 
+    /** IR cache keyed by source hash — avoids re-parsing identical code. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object[]> IR_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int IR_CACHE_MAX = 10000;
+
     public List<Ir> compileProgram(String code) {
-        if (code.indexOf('\n') >= 0) {
-            return compileRoutine(code);
+        // Check cache first
+        String hash = Integer.toHexString(code.hashCode());
+        Object[] cached = IR_CACHE.get(hash);
+        if (cached != null) {
+            @SuppressWarnings("unchecked")
+            List<Ir> ir = (List<Ir>) cached[0];
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Integer> tags = (java.util.Map<String, Integer>) cached[1];
+            lastTags = tags;
+            // Return a copy — Ir.iarg is mutable (JMP targets patched at link time)
+            return new java.util.ArrayList<>(ir);
         }
-        return compileLine(code);
+        List<Ir> result;
+        if (code.indexOf('\n') >= 0) {
+            result = compileRoutine(code);
+        } else {
+            result = compileLine(code);
+        }
+        // Cache if not too large
+        if (IR_CACHE.size() < IR_CACHE_MAX && result.size() > 2) {
+            IR_CACHE.put(hash, new Object[]{result, lastTags});
+        }
+        return result;
     }
 
     /** True when the last compile was a tagged routine (tags are linkable). */
