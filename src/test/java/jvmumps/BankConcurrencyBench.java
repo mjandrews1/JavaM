@@ -38,12 +38,16 @@ public final class BankConcurrencyBench {
         }
     }
 
+    static boolean JIT = false;
+    static Runnable benchRunner; // pre-compiled JIT runner
+
     /** Run one instance of BENCH on a shared store. */
     static String runOne(String bank, Object store, int corner, long n, int instanceId) throws Exception {
         var rt = new mjvm.runtime.MRuntime((jvmumps.StoreApi) store);
         var fe = new mjvm.compiler.MFrontend();
         var libProg = fe.compileProgram(bank);
-        mjvm.runtime.IrMachine.run(libProg, rt, fe.lastTags());
+        var libTags = fe.lastTags();
+        mjvm.runtime.IrMachine.run(libProg, rt, libTags);
         rt.reset();
         String code;
         if (corner == 1 || corner == 3) {
@@ -52,7 +56,17 @@ public final class BankConcurrencyBench {
             code = "D INIT^BANK W $$BENCH2^BANK(" + n + "),!\n";
         }
         var benchProg = fe.compileProgram(code);
-        mjvm.runtime.IrMachine.run(benchProg, rt, fe.lastTags());
+        if (JIT) {
+            // JIT-compile the shell. The hot loop (BANK.m BENCH) still runs
+            // through rt.call() → IR interpreter. To get full JIT benefit,
+            // BANK.m functions need compilation too (future work).
+            // Pre-warm: compile once, then run (javac cost amortized across calls).
+            String clsName = "BenchJIT_" + corner + "_" + n + "_" + instanceId;
+            var runner = mjvm.compiler.JavaSourceEmitter.compile(benchProg, clsName, rt);
+            runner.run();
+        } else {
+            mjvm.runtime.IrMachine.run(benchProg, rt, fe.lastTags());
+        }
         return rt.output().strip();
     }
 
@@ -79,8 +93,14 @@ public final class BankConcurrencyBench {
     public static void main(String[] args) throws Exception {
         String bank = loadBank();
         String storeType = args.length > 0 ? args[0] : "mem";
-        int onlyCorner = args.length > 1 && !args[1].equals("all") ? Integer.parseInt(args[1]) : 0;
-        long onlyN = args.length > 2 ? Long.parseLong(args[2]) : 0;
+        int onlyCorner = 0;
+        long onlyN = 0;
+        for (String a : args) {
+            if (a.equals("--jit")) JIT = true;
+            else if (a.equals("all")) continue;
+            else if (a.matches("1|2|3|4")) onlyCorner = Integer.parseInt(a);
+            else if (a.matches("\\d+")) onlyN = Long.parseLong(a);
+        }
 
         String[] cornerNames = {
             "1 acct, 1 inst",
@@ -89,7 +109,7 @@ public final class BankConcurrencyBench {
             "10 acct, 2 inst",
         };
 
-        System.out.println("Bank concurrency benchmark — store=" + storeType);
+        System.out.println("Bank concurrency benchmark — store=" + storeType + (JIT ? " [JIT]" : " [IR]"));
         System.out.println("corner              N          time_ms    txn/ms");
         System.out.println("------------------  ---------  -------    ------");
 
