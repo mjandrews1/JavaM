@@ -7,10 +7,13 @@ import java.nio.file.Path;
  * Store factory for mJVM / mesh plane.
  *
  * <ul>
- *   <li>{@code memory} — {@link MStore} (direct mode, no persistence)
- *   <li>{@code sqlite} — {@link SqlStore} (file; default when a db path exists)
- *   <li>{@code cdb2} — {@link Cdb2Store} grouped Comdb2 (mesh/SQL plane; U01/U02)
+ *   <li>{@code memory} — {@link MStore} (dev/test/cache, no persistence)
+ *   <li>{@code sqlite} — {@link SqlStore} (CI/conformance only — rejected in production)
+ *   <li>{@code cdb2} — {@link Cdb2Store} grouped Comdb2 (production; mesh/SQL plane)
  * </ul>
+ *
+ * <b>Production guard (#201):</b> when {@code MJVM_PROD=1}, SqlStore is rejected.
+ * Production engines are MStore (cache) + Cdb2Store (persistence/distribution).
  *
  * Cdb2 transport is {@code tools/cdb2pipe} (persistent cdb2api). Selection:
  * {@code --store cdb2} or env {@code MJVM_STORE=cdb2}. Pipe/db/type from
@@ -19,6 +22,12 @@ import java.nio.file.Path;
  */
 public final class Stores {
     private Stores() {}
+
+    /** True when running in production mode (SqlStore rejected). */
+    public static boolean isProduction() {
+        return "1".equals(System.getenv("MJVM_PROD"))
+                || "production".equalsIgnoreCase(System.getProperty("mjvm.env", ""));
+    }
 
     public static StoreApi open(String kind, String dbFile) throws Exception {
         String k = kind;
@@ -33,6 +42,12 @@ public final class Stores {
                 return new MStore();
             }
             case "sqlite", "sql", "sqlstore" -> {
+                if (isProduction()) {
+                    throw new MError(
+                        "SqlStore is CI-only and rejected in production (#201). "
+                        + "Use cdb2 for persistence or memory for cache. "
+                        + "Unset MJVM_PROD / mjvm.env to override.");
+                }
                 String path = dbFile != null ? dbFile : "mjvm.dat";
                 return new SqlStore(path);
             }

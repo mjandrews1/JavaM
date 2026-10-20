@@ -5,6 +5,7 @@ import java.io.BufferedWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,6 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * Transport: one long-lived tools/cdb2pipe process (cdb2api).
  * Process-spawn per op would dominate and make the walk comparison unfair.
  *
+ * <p><b>Write cache:</b> pending SETs are held in a {@link LinkedHashMap} keyed
+ * by hex(k). GET checks the cache first (read-your-writes), avoiding a flush
+ * round-trip for read-modify-write patterns like BANK.m DEP/WDR.
+ *
+ * <p><b>Pipelining:</b> when a flush is required before a read command, the
+ * SETB and the read are written together, then both responses are read — one
+ * latency round-trip instead of two.
+ *
  * <p><b>Thread safety:</b> all public ops synchronize on {@code this} (single pipe
  * is request/response). {@link #set} group-commits via SETB; {@link #close} is
  * idempotent and always reaps the pipe process.
@@ -26,11 +35,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class Cdb2Store implements StoreApi {
     static final char SEP = 1;
 
+    /** Pending write: wire row + decoded value for cache lookups. */
+    private static final class PendingRow {
+        final String row;
+        final MValue val;
+        PendingRow(String row, MValue val) { this.row = row; this.val = val; }
+    }
+
     private final Process proc;
     private final BufferedWriter in;
     private final BufferedReader out;
-    /** Write buffer — guarded by {@code this} (same monitor as cmd/flush). */
-    private final java.util.ArrayList<String> pending = new java.util.ArrayList<>();
+    /** Write cache — hex(k) → pending row. LinkedHashMap preserves flush order. */
+    private final LinkedHashMap<String, PendingRow> pending = new LinkedHashMap<>();
     private volatile boolean closed;
     /** In-process FIFO waiters (same policy as SqlStore LockQueue). */
     private final ConcurrentHashMap<String, LockQueue> lockQueues = new ConcurrentHashMap<>();
@@ -89,6 +105,53 @@ public final class Cdb2Store implements StoreApi {
         }
     }
 
+    /** Write a command without reading its response. Caller must {@link #recv}. */
+    private void send(String line) {
+        try {
+            in.write(line);
+            in.write(10);
+        } catch (Exception e) {
+            throw new MError("cdb2pipe io: " + e);
+        }
+    }
+
+    /** Read one response line. */
+    private String recv() {
+        try {
+            in.flush();
+            String r = out.readLine();
+            if (r == null) throw new MError("cdb2pipe EOF");
+            return r;
+        } catch (MError e) {
+            throw e;
+        } catch (Exception e) {
+            throw new MError("cdb2pipe io: " + e);
+        }
+    }
+
+    /**
+     * Flush pending SETs (if any) and send {@code nextCmd} in one pipe write.
+     * Returns the response to {@code nextCmd} (flush response is checked for OK).
+     */
+    private String flushAndCmd(String nextCmd) {
+        if (pending.isEmpty()) {
+            return cmd(nextCmd);
+        }
+        // Build SETB payload
+        int n = pending.size();
+        StringBuilder sb = new StringBuilder("SETB\t").append(n).append('\n');
+        for (PendingRow pr : pending.values()) {
+            sb.append(pr.row).append('\n');
+        }
+        pending.clear();
+        // Pipeline: write SETB + nextCmd, then read both responses
+        send(sb.toString());
+        send(nextCmd);
+        String flushResp = recv();
+        if (!flushResp.startsWith("OK")) throw new MError("cdb2 setb: " + flushResp);
+        return recv();
+    }
+
     private static String key(String name, List<String> path) {
         return SqlStore.key(name, path);
     }
@@ -104,18 +167,21 @@ public final class Cdb2Store implements StoreApi {
 
     @Override
     public MValue get(List<String> path, boolean global) {
-        String r;
+        String k = key(path.get(0), path);
+        String hk = hex(k);
         synchronized (this) {
-            flushLocked();
-            r = cmd("GET\t" + hex(key(path.get(0), path)));
+            // Read-your-writes: check pending cache first
+            PendingRow pr = pending.get(hk);
+            if (pr != null) return pr.val;
+            String r = flushAndCmd("GET\t" + hk);
+            if (r.startsWith("VAL ")) {
+                String[] p = r.split(" ");
+                String v = unhex(p[1]);
+                int isnum = Integer.parseInt(p[2]);
+                return isnum == 1 ? MValue.ofNumber(ExprEval.toNum(v)) : MValue.ofString(v);
+            }
+            return MValue.EMPTY;
         }
-        if (r.startsWith("VAL ")) {
-            String[] p = r.split(" ");
-            String v = unhex(p[1]);
-            int isnum = Integer.parseInt(p[2]);
-            return isnum == 1 ? MValue.ofNumber(ExprEval.toNum(v)) : MValue.ofString(v);
-        }
-        return MValue.EMPTY;
     }
 
     /** Group-commit pending SETs (write buffer). Safe to call anytime. */
@@ -127,8 +193,8 @@ public final class Cdb2Store implements StoreApi {
         if (pending.isEmpty()) return;
         int n = pending.size();
         StringBuilder sb = new StringBuilder("SETB\t").append(n).append('\n');
-        for (String row : pending) {
-            sb.append(row).append('\n');
+        for (PendingRow pr : pending.values()) {
+            sb.append(pr.row).append('\n');
         }
         pending.clear();
         String r = cmd(sb.toString());
@@ -138,7 +204,8 @@ public final class Cdb2Store implements StoreApi {
     @Override
     public void set(List<String> path, boolean global, MValue v) {
         String val = v.isnum ? ExprEval.mstr(v.num) : v.str;
-        String row = hex(key(path.get(0), path))
+        String k = key(path.get(0), path);
+        String row = hex(k)
                 + "\t" + hex(sk(path))
                 + "\t" + hex(val)
                 + "\t" + (v.isnum ? 1 : 0)
@@ -147,7 +214,7 @@ public final class Cdb2Store implements StoreApi {
             if (closed) {
                 throw new MError("cdb2store closed");
             }
-            pending.add(row);
+            pending.put(hex(k), new PendingRow(row, v));
             if (pending.size() >= BATCH) {
                 flushLocked();
             }
@@ -156,30 +223,32 @@ public final class Cdb2Store implements StoreApi {
 
     @Override
     public void kill(List<String> path, boolean global) {
-        String r;
+        String k = key(path.get(0), path);
+        String hk = hex(k);
         synchronized (this) {
-            flushLocked();
-            r = cmd("KILL\t" + hex(key(path.get(0), path)));
+            // Remove pending entries for this key and descendants
+            pending.keySet().removeIf(pk -> {
+                String pkPlain = unhex(pk);
+                return pkPlain.equals(k) || pkPlain.startsWith(k + SEP);
+            });
+            String r = flushAndCmd("KILL\t" + hk);
+            if (!r.startsWith("OK")) throw new MError("cdb2 kill: " + r);
         }
-        if (!r.startsWith("OK")) throw new MError("cdb2 kill: " + r);
     }
 
     @Override
     public int data(List<String> path, boolean global) {
-        String r;
         synchronized (this) {
-            flushLocked();
-            r = cmd("DATA\t" + hex(key(path.get(0), path)));
+            String r = flushAndCmd("DATA\t" + hex(key(path.get(0), path)));
+            if (r.startsWith("NUM ")) return Integer.parseInt(r.substring(4));
+            return 0;
         }
-        if (r.startsWith("NUM ")) return Integer.parseInt(r.substring(4));
-        return 0;
     }
 
     @Override
     public String order(List<String> path, boolean global, double dir) {
         if (path.size() < 2) return "";
         synchronized (this) {
-        flushLocked();
         List<String> parent = path.subList(0, path.size() - 1);
         String cur = path.get(path.size() - 1);
         String pfx = key(parent.get(0), parent) + SEP;
@@ -204,8 +273,11 @@ public final class Cdb2Store implements StoreApi {
             skLo = skPrefix;
             skHi = cur.isEmpty() ? skPrefix + hiMark : skPrefix + curSk;
         }
-        String r = cmd("ORDER\t" + hex(parent.get(0)) + "\t" + hex(skLo) + "\t"
-                + hex(skHi) + "\t" + (dir > 0 ? 1 : -1));
+        // For reverse: SQL is sk<@sk AND sk>@skhi, so pass upper as @sk, lower as @skhi
+        String argSk = dir > 0 ? skLo : skHi;
+        String argSkhi = dir > 0 ? skHi : skLo;
+        String r = flushAndCmd("ORDER\t" + hex(parent.get(0)) + "\t" + hex(argSk) + "\t"
+                + hex(argSkhi) + "\t" + (dir > 0 ? 1 : -1));
         if (!r.startsWith("KEY ")) return "";
         String k = unhex(r.substring(4));
         String rest = k.substring(pfx.length());
