@@ -79,6 +79,8 @@ public final class IrMachine {
     private static final ThreadLocal<MValue[]> VALS_POOL = ThreadLocal.withInitial(() -> new MValue[256]);
     /** Numeric values parallel to vals — null in vals[] means value is in dvals[]. */
     private static final ThreadLocal<double[]> DVALS_POOL = ThreadLocal.withInitial(() -> new double[256]);
+
+
     /** Thread-local return-address stack — avoids ArrayDeque allocation per call. */
     private static final ThreadLocal<int[]> RETS_POOL = ThreadLocal.withInitial(() -> new int[64]);
     /** Thread-local args buffer — avoids allocating MValue[] per CALL. */
