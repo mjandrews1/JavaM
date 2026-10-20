@@ -18,7 +18,9 @@ import java.util.concurrent.*;
  */
 public final class BankConcurrencyBench {
 
-    static final long[] NS = {1, 10, 100, 1000, 10000, 100000, 1000000};
+    // Cap at 10K — higher breakpoints take too long on slow stores (SQL ~0.2 txn/ms).
+    // Revisit when engine perf improves enough to make 100K/1M runs practical.
+    static final long[] NS = {1, 10, 100, 1000, 10000};
 
     static String loadBank() throws Exception {
         return Files.readString(Path.of("src/main/m/lib/BANK.m"));
