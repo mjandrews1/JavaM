@@ -35,6 +35,20 @@ public final class H2Bench {
             System.out.printf("SqlStore DEP:   %.2f us/txn (n=%d)%n", us, n);
         }
 
+        // MapDBStore
+        {
+            String path = tmpDir + "/mapdbbench-" + System.nanoTime() + ".db";
+            var s = new MapDBStore(path);
+            for (int i = 0; i < 100; i++) depPattern(s, i);
+            long t0 = System.nanoTime();
+            for (int i = 0; i < n; i++) depPattern(s, i);
+            long t1 = System.nanoTime();
+            double us = (t1 - t0) / 1e3 / n;
+            System.out.printf("MapDBStore DEP: %.2f us/txn (n=%d)%n", us, n);
+            s.close();
+            new java.io.File(path).delete();
+        }
+
         // MStore
         {
             var s = new MStore();
