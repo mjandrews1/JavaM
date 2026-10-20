@@ -21,9 +21,10 @@
 
 | Order | Issue | What | Impact | Status |
 |-------|-------|------|--------|--------|
-| **2.1** | [#175](https://github.com/mjandrews1/JavaM/issues/175) Expression AST caching + CSE | Eliminates re-parsing in loops | ⬜ |
-| **2.2** | [#176](https://github.com/mjandrews1/JavaM/issues/176) Extrinsic call inlining + tail call | Reduces `$$fn` overhead | ⬜ |
-| **2.3** | [#172](https://github.com/mjandrews1/JavaM/issues/172) Cdb2Store pipe protocol batching | Reduces I/O round-trips | ⬜ |
+| **2.1** | [#175](https://github.com/mjandrews1/JavaM/issues/175) Expression token cache | Eliminates re-lexing | ✅ **Done** | ExprEval.tokenCache (PR #181) |
+| **2.2** | [#176](https://github.com/mjandrews1/JavaM/issues/176) Extrinsic call optimization | Reduces `$$fn` overhead | ✅ **Done** | Thread-local pools + evalExpr fast path (PR #182) |
+| **2.3** | [#177](https://github.com/mjandrews1/JavaM/issues/177) String concat builder | Memory allocation | ✅ **Done** | StringBuilder for `_` operators (PR #183) |
+| **2.4** | [#172](https://github.com/mjandrews1/JavaM/issues/172) Cdb2Store pipe protocol batching | Reduces I/O round-trips | ⬜ **NEXT** | — |
 
 ---
 
@@ -31,10 +32,9 @@
 
 | Order | Issue | What | Status |
 |-------|-------|------|--------|
-| **3.1** | [#177](https://github.com/mjandrews1/JavaM/issues/177) String concat builder + batch flush | Memory allocation, bulk I/O | ⬜ |
-| **3.2** | [#28](https://github.com/mjandrews1/ydb-mesh/issues/28) MCP registry listings | Feature | ⬜ |
-| **3.3** | [#29](https://github.com/mjandrews1/tsx/issues/29) FRED endpoint unreachable | Blocked on network | 🚫 |
-| **3.4** | [#30](https://github.com/mjandrews1/tsx/issues/30) FluView endpoint unreachable | Blocked on network | 🚫 |
+| **3.1** | [#28](https://github.com/mjandrews1/ydb-mesh/issues/28) MCP registry listings | Feature | ⬜ |
+| **3.2** | [#29](https://github.com/mjandrews1/tsx/issues/29) FRED endpoint unreachable | Blocked on network | 🚫 |
+| **3.3** | [#30](https://github.com/mjandrews1/tsx/issues/30) FluView endpoint unreachable | Blocked on network | 🚫 |
 
 ---
 
@@ -55,3 +55,12 @@
 | Phase 2 | Cdb2Store throughput | 0.03 → 0.12 txn/ms (4×) | — |
 | Phase 3 | All 4 corners × 3 stores × 3 machines | Baseline table | — |
 | Phase 4 | VistA smoke + Bank recurring | Full corpus + regression baseline | — |
+
+---
+
+## Progress (2026-10-20)
+
+- **Phase 1:** Complete ✅
+- **Phase 2:** 3/4 done (token cache, extrinsic, concat). **#172 Cdb2Store batching is next.**
+- **Phase 3:** #177 moved to Phase 2 (done). MCP registry + blocked endpoints remain.
+- **Infrastructure:** U03 syslog collector working (ydb-infra#18 closed).

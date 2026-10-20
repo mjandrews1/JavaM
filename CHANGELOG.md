@@ -7,6 +7,13 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
+## [Unreleased]
+
+### Infrastructure
+- **U03 syslog collector** (ydb-infra#18) — rsyslog on U03 receiving from U01/U02 via imudp/imtcp port 514, routing to `/var/log/remote/utility-0{1,2,3}/syslog.log`. Root cause of initial routing failure: rsyslog drops to `syslog` user after startup (`$PrivDropToUser syslog`), but `/var/log/remote/` was `root:root` — `Permission denied` on every write, messages silently discarded. Fixed by `chown syslog:adm` + pre-creating log files.
+
+---
+
 ## [0.9.0](https://github.com/mjandrews1/JavaM/releases/tag/v0.9.0) — 2026-10-18
 
 **GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v0.9.0
