@@ -77,13 +77,24 @@ public final class IrMachine {
 
     /** Thread-local value stack pool — avoids allocating 256-element array per call. */
     private static final ThreadLocal<MValue[]> VALS_POOL = ThreadLocal.withInitial(() -> new MValue[256]);
+    /** Numeric values parallel to vals — null in vals[] means value is in dvals[]. */
+    private static final ThreadLocal<double[]> DVALS_POOL = ThreadLocal.withInitial(() -> new double[256]);
     /** Thread-local return-address stack — avoids ArrayDeque allocation per call. */
     private static final ThreadLocal<int[]> RETS_POOL = ThreadLocal.withInitial(() -> new int[64]);
     /** Thread-local args buffer — avoids allocating MValue[] per CALL. */
     private static final ThreadLocal<MValue[]> ARGS_POOL = ThreadLocal.withInitial(() -> new MValue[16]);
 
+    /** Pop a value from the split stack — handles null (numeric) slots. */
+    private static MValue popVal(MValue[] vals, double[] dvals, int[] sp) {
+        int i = --sp[0];
+        MValue v = vals[i];
+        return v != null ? v : MValue.ofNumber(dvals[i]);
+    }
+
     private static jvmumps.MValue run(List<Ir> prog, MRuntime rt, int startPc, MValue[] args) {
         MValue[] vals = VALS_POOL.get();
+        double[] dvals = DVALS_POOL.get();
+        int[] spA = {0}; // array wrapper for popVal
         int sp = 0;
         int pc = startPc;
         int[] rets = RETS_POOL.get();
@@ -126,21 +137,29 @@ public final class IrMachine {
             Ir op = prog.get(pc);
             switch (op.op) {
                 case Ir.PUSH -> {
-                    if (op.iarg == 1) vals[sp++] = MValue.ofNumber(op.dval);
-                    else vals[sp++] = MValue.ofString(op.ival == null ? "" : op.ival);
+                    if (op.iarg == 1) {
+                        dvals[sp] = op.dval;
+                        vals[sp++] = null; // null = numeric slot
+                    } else {
+                        vals[sp++] = MValue.ofString(op.ival == null ? "" : op.ival);
+                    }
                 }
                 case Ir.LOAD -> {
                     // Check pre-read cache first (batched global reads)
                     jvmumps.MValue cached = preRead.get(op.name);
                     if (cached != null) {
-                        vals[sp++] = cached;
+                        if (cached.isnum) { dvals[sp] = cached.num; vals[sp++] = null; }
+                        else vals[sp++] = cached;
                         preReadHits++;
                     } else {
                         try {
-                            vals[sp++] = rt.getVar(op.name);
+                            jvmumps.MValue gv = rt.getVar(op.name);
+                            if (gv.isnum) { dvals[sp] = gv.num; vals[sp++] = null; }
+                            else vals[sp++] = gv;
                         } catch (jvmumps.MError e) {
                             if (!rt.fireTrap()) throw e;
-                            vals[sp++] = jvmumps.MValue.EMPTY;
+                            dvals[sp] = 0;
+                            vals[sp++] = null;
                         }
                     }
                 }
@@ -153,7 +172,7 @@ public final class IrMachine {
                 case Ir.STORE -> {
                     // Invalidate pre-read cache for this key
                     if (op.name != null) preRead.remove(op.name);
-                    MValue v = vals[--sp];
+                    MValue v = vals[--sp]; if (v == null) v = MValue.ofNumber(dvals[sp]);
                     lastStored = v;
                     if (op.name != null && op.name.startsWith("@")) {
                         String target = rt.evalExpr(op.name.substring(1)).asStr();
@@ -190,12 +209,15 @@ public final class IrMachine {
                     vals[sp++] = lastStored;
                 }
                 case Ir.ADD, Ir.SUB, Ir.MUL, Ir.DIV, Ir.CONCAT, Ir.MOD -> {
-                    MValue b = vals[--sp];
-                    MValue a = vals[--sp];
                     if (op.op == Ir.CONCAT) {
+                        MValue b = vals[--sp]; if (b == null) b = MValue.ofNumber(dvals[sp]); if (b == null) b = MValue.ofNumber(dvals[sp]);
+                        MValue a = vals[--sp]; if (a == null) a = MValue.ofNumber(dvals[sp]); if (a == null) a = MValue.ofNumber(dvals[sp]);
                         vals[sp++] = MValue.ofString(a.asStr() + b.asStr());
                     } else {
-                        double x = a.asNum(), y = b.asNum();
+                        // Numeric fast path: read from dvals, write to dvals (zero alloc)
+                        double y, x;
+                        sp--; if (vals[sp] != null) { y = vals[sp].asNum(); } else { y = dvals[sp]; }
+                        sp--; if (vals[sp] != null) { x = vals[sp].asNum(); } else { x = dvals[sp]; }
                         double r = switch (op.op) {
                             case Ir.ADD -> x + y;
                             case Ir.SUB -> x - y;
@@ -203,12 +225,13 @@ public final class IrMachine {
                             case Ir.MOD -> y == 0 ? x : x - y * Math.floor(x / y);
                             default -> y == 0 ? 0 : x / y;
                         };
-                        vals[sp++] = MValue.ofNumber(r);
+                        dvals[sp] = r;
+                        vals[sp++] = null; // numeric result
                     }
                 }
                 case Ir.EQ, Ir.LT, Ir.GT, Ir.LE, Ir.GE, Ir.NE -> {
-                    MValue b = vals[--sp];
-                    MValue a = vals[--sp];
+                    MValue b = vals[--sp]; if (b == null) b = MValue.ofNumber(dvals[sp]); if (b == null) b = MValue.ofNumber(dvals[sp]);
+                    MValue a = vals[--sp]; if (a == null) a = MValue.ofNumber(dvals[sp]); if (a == null) a = MValue.ofNumber(dvals[sp]);
                     boolean r = switch (op.op) {
                         case Ir.EQ -> MRuntime.eq(a, b);
                         case Ir.LT -> MRuntime.lt(a, b);
@@ -217,10 +240,11 @@ public final class IrMachine {
                         case Ir.GE -> !MRuntime.lt(a, b);
                         default -> !MRuntime.eq(a, b);
                     };
-                    vals[sp++] = MValue.ofNumber(r ? 1 : 0);
+                    dvals[sp] = r ? 1 : 0;
+                    vals[sp++] = null;
                 }
                 case Ir.WRITE -> {
-                    MValue v = vals[--sp];
+                    sp--; MValue v = vals[sp] != null ? vals[sp] : MValue.ofNumber(dvals[sp]);
                     if (op.iarg == 1) {
                         // argument indirection: write comma-separated exprs
                         String src = v.asStr();
@@ -234,21 +258,21 @@ public final class IrMachine {
                 case Ir.WRITE_NL -> rt.writeNl();
                 case Ir.END_WRITE -> rt.endWrite();
                 case Ir.XECUTE -> {
-                    MValue v = vals[--sp];
+                    MValue v = vals[--sp]; if (v == null) v = MValue.ofNumber(dvals[sp]);
                     var p2 = new mjvm.compiler.MFrontend().compileLine(v.asStr());
                     run(p2, rt);
                 }
                 case Ir.WRITE_CHAR -> {
-                    MValue v = vals[--sp];
+                    MValue v = vals[--sp]; if (v == null) v = MValue.ofNumber(dvals[sp]);
                     rt.writeChar((int) v.asNum());
                 }
                 case Ir.WRITE_COL -> {
-                    MValue v = vals[--sp];
+                    MValue v = vals[--sp]; if (v == null) v = MValue.ofNumber(dvals[sp]);
                     rt.writeCol((int) v.asNum());
                 }
                 case Ir.JMP -> pc = op.iarg;
                 case Ir.JMP0 -> {
-                    MValue v = vals[--sp];
+                    sp--; MValue v = vals[sp] != null ? vals[sp] : MValue.ofNumber(dvals[sp]);
                     if (!MRuntime.truthy(v)) {
                         pc = op.iarg;
                     } else {
@@ -258,7 +282,7 @@ public final class IrMachine {
                 case Ir.CALL -> {
                     int argc = op.iarg;
                     MValue[] argsBuf = ARGS_POOL.get();
-                    for (int k = argc - 1; k >= 0; k--) argsBuf[k] = vals[--sp];
+                    for (int k = argc - 1; k >= 0; k--) { MValue av = vals[--sp]; argsBuf[k] = av != null ? av : MValue.ofNumber(dvals[sp]); }
                     if (op.name != null && op.name.startsWith("$")) {
                         // extrinsic $$fn — run tag via nested program
                         vals[sp++] = rt.callExtrinsic(op.name.substring(1), argsBuf);
@@ -269,16 +293,16 @@ public final class IrMachine {
                 }
                 case Ir.OPEN -> {
                     // stack: path, device#  (device# pushed first)
-                    MValue path = vals[--sp];
-                    MValue num = vals[--sp];
+                    MValue path = vals[--sp]; if (path == null) path = MValue.ofNumber(dvals[sp]);
+                    MValue num = vals[--sp]; if (num == null) num = MValue.ofNumber(dvals[sp]);
                     rt.openDevice((int) num.asNum(), path.asStr());
                 }
                 case Ir.CLOSE -> {
-                    MValue num = vals[--sp];
+                    MValue num = vals[--sp]; if (num == null) num = MValue.ofNumber(dvals[sp]);
                     rt.closeDevice((int) num.asNum());
                 }
                 case Ir.USE -> {
-                    MValue num = vals[--sp];
+                    MValue num = vals[--sp]; if (num == null) num = MValue.ofNumber(dvals[sp]);
                     rt.useDevice((int) num.asNum());
                 }
                 case Ir.READ -> {
@@ -286,11 +310,11 @@ public final class IrMachine {
                             MValue.ofString(rt.readDevice()));
                 }
                 case Ir.JOB -> {
-                    MValue code = vals[--sp];
+                    MValue code = vals[--sp]; if (code == null) code = MValue.ofNumber(dvals[sp]);
                     rt.job(code.asStr());
                 }
                 case Ir.LOCK -> {
-                    MValue key = vals[--sp];
+                    MValue key = vals[--sp]; if (key == null) key = MValue.ofNumber(dvals[sp]);
                     if (op.iarg > 0) rt.lockAcquire(key.asStr(), 50);
                     else rt.lockRelease(key.asStr());
                 }
@@ -300,8 +324,8 @@ public final class IrMachine {
                 case Ir.NEW -> rt.newVar(op.name);
                 case Ir.KILL -> {
                     if ("@".equals(op.name)) {
-                        String target = vals[--sp].asStr();
-                        rt.killVar(target);
+                        MValue tv = vals[--sp]; if (tv == null) tv = MValue.ofNumber(dvals[sp]);
+                        rt.killVar(tv.asStr());
                     } else {
                         rt.killVar(op.name);
                     }
@@ -309,12 +333,12 @@ public final class IrMachine {
                 case Ir.MERGE -> rt.mergeVar(op.name, op.ival);
                 case Ir.EVAL_EXPR -> vals[sp++] = rt.evalExpr(op.ival);
                 case Ir.SET_EXTRACT -> {
-                    MValue v = vals[--sp];
+                    MValue v = vals[--sp]; if (v == null) v = MValue.ofNumber(dvals[sp]);
                     String[] ft = op.ival.split(",");
                     rt.setExtract(op.name, Integer.parseInt(ft[0]), Integer.parseInt(ft[1]), v.asStr());
                 }
                 case Ir.SET_PIECE -> {
-                    MValue v = vals[--sp];
+                    MValue v = vals[--sp]; if (v == null) v = MValue.ofNumber(dvals[sp]);
                     String[] parts = op.ival.split("\u0001", -1);
                     rt.setPiece(op.name, parts[0], Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), v.asStr());
                 }
@@ -330,7 +354,7 @@ public final class IrMachine {
                 }
                 case Ir.RET_VALUE -> {
                     // Q expr — the value becomes the extrinsic return value
-                    if (sp > 0) rt.setExtrinsicValue(vals[--sp]);
+                    if (sp > 0) { MValue ev = vals[--sp]; rt.setExtrinsicValue(ev != null ? ev : MValue.ofNumber(dvals[sp])); }
                     if (rsp > 0) {
                         pc = rets[--rsp];
                         continue;
