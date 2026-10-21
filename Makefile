@@ -24,10 +24,12 @@ FILEMAN_CORPUS ?= $(HOME)/_fileman
 export FILEMAN_CORPUS
 
 # All *Smoke test mains (src/test/java/jvmumps/*Smoke.java). J0 takes CORPUS.
-SMOKE_CLASSES := $(patsubst src/test/java/jvmumps/%.java,%,$(wildcard src/test/java/jvmumps/*Smoke.java))
+# Exclude SQLite/Comdb2 backend tests (frozen backends, #201)
+EXCLUDE_SMOKE := Cdb2OrderParitySmoke J7LiveSmoke SqlCorpusSmoke SqlEngineSmoke SqlLockMeasureSmoke SqlLockMultiKeySmoke SqlLockStressSmoke OrderHangSmoke LimitProbeSmoke
+SMOKE_CLASSES := $(filter-out $(EXCLUDE_SMOKE),$(patsubst src/test/java/jvmumps/%.java,%,$(wildcard src/test/java/jvmumps/*Smoke.java)))
 SMOKE_NOARG   := $(filter-out J0Smoke,$(SMOKE_CLASSES))
-# Integration: live SqlStore temp files (ad-hoc before #64).
-ITEST_CLASSES := SqlEngineSmoke SqlCorpusSmoke
+# Integration tests removed (SqlStore frozen, #201)
+ITEST_CLASSES :=
 
 .PHONY: all smoke smokes-core itest run clean depgraph javadoc
 
@@ -60,8 +62,9 @@ smokes-core: all mjvm
 	$(JAVA) -cp $(CP) jvmumps.J12SymLitSmoke
 	$(JAVA) -cp $(CP) jvmumps.J7PersistSmoke
 
-# Integration (SqlStore / engine over temp DB) — jvmumps#64 itest.
+# Integration tests removed (SqlStore frozen, #201)
 itest: all
+	@echo "ITEST SKIP — SqlStore/Comdb2 frozen (#201)"
 	$(JAVAC) --release 21 -cp $(CP) -d $(OUT) src/test/java/jvmumps/*.java
 	@set -e; \
 	for c in $(ITEST_CLASSES); do \

@@ -581,20 +581,550 @@ public final class MFormatter {
                before.contains("KILL ") || before.endsWith(" K ") || before.equals("K");
     }
 
+    // --- Attribute & Cross-Reference Generator (IBM PL/I Checkout style) ---
+
+    /** Symbol attributes: name, kind, scope, definition, references. */
+    static class Symbol {
+        String name;
+        String kind;        // "local", "global", "param", "tag", "extrinsic"
+        String scope;       // tag name where defined, or "(routine)"
+        int defLine;        // line number of definition (1-based)
+        List<Integer> refs = new ArrayList<>(); // line numbers of references
+        String attributes = "";  // additional attributes (params, type, etc.)
+    }
+
+    /**
+     * Generate attribute & cross-reference listing.
+     *
+     * For each symbol (variable, tag, global, extrinsic):
+     *   - Attributes: kind, scope, definition line
+     *   - Cross-reference: every line where it appears
+     *
+     * Output format follows IBM PL/I Checkout Compiler conventions:
+     *   SYMBOL          KIND      SCOPE    DEF   REFS
+     *   %AC             PARAM     DEP      19    20,22,23
+     *   ^BANK           GLOBAL    (global)  22   23,24,25,...
+     */
+    public String xref(String source) {
+        String[] lines = source.split("\n", -1);
+        List<Tag> tags = new ArrayList<>();
+        Tag current = null;
+        Map<String, Symbol> symbols = new LinkedHashMap<>();
+
+        // Pass 1: find tags and their line ranges
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            int labelEnd = 0;
+            while (labelEnd < line.length() &&
+                   (Character.isLetterOrDigit(line.charAt(labelEnd)) ||
+                    line.charAt(labelEnd) == '%' || line.charAt(labelEnd) == '^')) {
+                labelEnd++;
+            }
+            if (labelEnd == 0) continue;
+            if (labelEnd < line.length()) {
+                char next = line.charAt(labelEnd);
+                if (next != ' ' && next != '\t' && next != '(') continue;
+            }
+            // Extract full label including parenthesized params: DEP(%AC,%A)
+            String label = line.substring(0, labelEnd);
+            String params = "";
+            String tagLabel = label;
+            int paren = -1;
+            // Check if next char after labelEnd is '(' — parameterized tag
+            if (labelEnd < line.length() && line.charAt(labelEnd) == '(') {
+                paren = labelEnd;
+                int close = line.indexOf(')', labelEnd);
+                if (close > 0) {
+                    params = line.substring(labelEnd, close + 1);
+                    tagLabel = line.substring(0, labelEnd);
+                }
+            }
+            String rest = line.substring(labelEnd).strip();
+            if (paren > 0) rest = line.substring(line.indexOf(')', labelEnd) + 1).strip();
+
+            current = new Tag();
+            current.name = tagLabel;
+            current.params = params;
+            current.startLine = i;
+            tags.add(current);
+
+            // Register tag symbol
+            Symbol tagSym = new Symbol();
+            tagSym.name = tagLabel;
+            tagSym.kind = "TAG";
+            tagSym.scope = "(routine)";
+            tagSym.defLine = i + 1;
+            tagSym.attributes = params.isEmpty() ? "" : "params=" + params;
+            symbols.put("TAG:" + tagLabel, tagSym);
+
+            // Register parameter symbols
+            if (paren > 0 && !params.isEmpty()) {
+                String paramStr = params.substring(1, params.length() - 1); // strip parens
+                for (String p : paramStr.split(",")) {
+                    p = p.trim();
+                    if (!p.isEmpty()) {
+                        Symbol ps = new Symbol();
+                        ps.name = p;
+                        ps.kind = "PARAM";
+                        ps.scope = tagLabel;
+                        ps.defLine = i + 1;
+                        ps.attributes = "of " + tagLabel;
+                        symbols.put("PARAM:" + tagLabel + ":" + p, ps);
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < tags.size(); i++) {
+            tags.get(i).endLine = (i + 1 < tags.size()) ? tags.get(i + 1).startLine - 1 : lines.length - 1;
+        }
+
+        // Pass 2: find all symbol references
+        for (Tag tag : tags) {
+            for (int i = tag.startLine; i <= tag.endLine; i++) {
+                String line = lines[i];
+                int lineNum = i + 1; // 1-based
+                // Strip comment for symbol analysis
+                String code = line;
+                int semi = line.indexOf(';');
+                if (semi >= 0) code = line.substring(0, semi);
+
+                // Find globals: ^NAME
+                int pos = 0;
+                while (pos < code.length()) {
+                    if (code.charAt(pos) == '^') {
+                        int j = pos + 1;
+                        int start = j;
+                        while (j < code.length() && (Character.isLetterOrDigit(code.charAt(j)) ||
+                               code.charAt(j) == '%')) j++;
+                        if (j > start) {
+                            String gname = "^" + code.substring(start, j);
+                            Symbol sym = symbols.computeIfAbsent("GLOBAL:" + gname, k -> {
+                                Symbol s = new Symbol();
+                                s.name = gname;
+                                s.kind = "GLOBAL";
+                                s.scope = "(global)";
+                                s.defLine = -1;
+                                return s;
+                            });
+                            if (!sym.refs.contains(lineNum)) sym.refs.add(lineNum);
+                        }
+                        pos = j;
+                        continue;
+                    }
+                    // Find locals: %NAME
+                    if (code.charAt(pos) == '%' && pos > 0 &&
+                        (Character.isLetterOrDigit(code.charAt(pos-1)) || code.charAt(pos-1) == '%' ||
+                         code.charAt(pos-1) == '^')) {
+                        // % preceded by identifier char — part of subscript, skip
+                        pos++;
+                        continue;
+                    }
+                    if (code.charAt(pos) == '%') {
+                        int j = pos + 1;
+                        int start = j;
+                        while (j < code.length() && (Character.isLetterOrDigit(code.charAt(j)) ||
+                               code.charAt(j) == '%')) j++;
+                        if (j > start) {
+                            String lname = "%" + code.substring(start, j);
+                            // Check if it's a parameter of this tag
+                            String key = "PARAM:" + tag.name + ":" + lname;
+                            Symbol sym = symbols.get(key);
+                            if (sym == null) {
+                                sym = symbols.computeIfAbsent("LOCAL:" + tag.name + ":" + lname, k -> {
+                                    Symbol s = new Symbol();
+                                    s.name = lname;
+                                    s.kind = "LOCAL";
+                                    s.scope = tag.name;
+                                    s.defLine = lineNum;
+                                    return s;
+                                });
+                            }
+                            if (!sym.refs.contains(lineNum)) sym.refs.add(lineNum);
+                        }
+                        pos = j;
+                        continue;
+                    }
+                    // Find extrinsic: $$NAME
+                    if (code.charAt(pos) == '$' && pos+1 < code.length() && code.charAt(pos+1) == '$') {
+                        int j = pos + 2;
+                        int start = j;
+                        while (j < code.length() && (Character.isLetterOrDigit(code.charAt(j)) ||
+                               code.charAt(j) == '%' || code.charAt(j) == '^')) j++;
+                        if (j > start) {
+                            String ename = code.substring(start, j);
+                            Symbol sym = symbols.computeIfAbsent("EXT:" + ename, k -> {
+                                Symbol s = new Symbol();
+                                s.name = "$$" + ename;
+                                s.kind = "EXTRINSIC";
+                                s.scope = "(routine)";
+                                s.defLine = -1;
+                                return s;
+                            });
+                            if (!sym.refs.contains(lineNum)) sym.refs.add(lineNum);
+                        }
+                        pos = j;
+                        continue;
+                    }
+                    pos++;
+                }
+
+                // Find DO/GOTO targets (tag references)
+                pos = 0;
+                while (pos < code.length()) {
+                    char c = code.charAt(pos);
+                    if ((c == 'D' || c == 'd' || c == 'G' || c == 'g') &&
+                        (pos == 0 || code.charAt(pos-1) == ' ' || code.charAt(pos-1) == '\t') &&
+                        (pos+1 >= code.length() || code.charAt(pos+1) == ' ' || code.charAt(pos+1) == '\t')) {
+                        int j = pos + 1;
+                        while (j < code.length() && (code.charAt(j) == ' ' || code.charAt(j) == '\t')) j++;
+                        int start = j;
+                        while (j < code.length() && (Character.isLetterOrDigit(code.charAt(j)) ||
+                               code.charAt(j) == '%' || code.charAt(j) == '^')) j++;
+                        if (j > start) {
+                            String target = code.substring(start, j);
+                            String key = "TAG:" + target;
+                            Symbol sym = symbols.get(key);
+                            if (sym != null && !sym.refs.contains(lineNum)) {
+                                sym.refs.add(lineNum);
+                            }
+                        }
+                        pos = j;
+                        continue;
+                    }
+                    pos++;
+                }
+            }
+        }
+
+        // Generate output
+        StringBuilder sb = new StringBuilder();
+        String routineName = tags.isEmpty() ? "(routine)" : tags.get(0).name;
+        sb.append("=== ").append(routineName).append(" — Attribute & Cross-Reference ===\n\n");
+
+        // Column header
+        sb.append(String.format("%-20s %-10s %-12s %5s  %s%n",
+            "SYMBOL", "KIND", "SCOPE", "DEF", "CROSS-REFERENCE (line numbers)"));
+        sb.append("-".repeat(80)).append('\n');
+
+        // Sort: TAGs first, then PARAMs, LOCALs, GLOBALs, EXTRINSICs
+        List<Symbol> sorted = new ArrayList<>(symbols.values());
+        sorted.sort((a, b) -> {
+            int ka = kindOrder(a.kind), kb = kindOrder(b.kind);
+            if (ka != kb) return ka - kb;
+            return a.name.compareTo(b.name);
+        });
+
+        for (Symbol sym : sorted) {
+            String defStr = sym.defLine > 0 ? String.valueOf(sym.defLine) : "—";
+            String refsStr = sym.refs.isEmpty() ? "(none)" :
+                sym.refs.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+            String attrs = sym.attributes.isEmpty() ? "" : "  [" + sym.attributes + "]";
+            sb.append(String.format("%-20s %-10s %-12s %5s  %s%s%n",
+                sym.name, sym.kind, sym.scope, defStr, refsStr, attrs));
+        }
+
+        // Summary
+        sb.append("\n");
+        long nTags = symbols.values().stream().filter(s -> s.kind.equals("TAG")).count();
+        long nParams = symbols.values().stream().filter(s -> s.kind.equals("PARAM")).count();
+        long nLocals = symbols.values().stream().filter(s -> s.kind.equals("LOCAL")).count();
+        long nGlobals = symbols.values().stream().filter(s -> s.kind.equals("GLOBAL")).count();
+        long nExtr = symbols.values().stream().filter(s -> s.kind.equals("EXTRINSIC")).count();
+        sb.append(String.format("Summary: %d tags, %d params, %d locals, %d globals, %d extrinsics%n",
+            nTags, nParams, nLocals, nGlobals, nExtr));
+
+        return sb.toString();
+    }
+
+    static int kindOrder(String kind) {
+        switch (kind) {
+            case "TAG": return 0;
+            case "PARAM": return 1;
+            case "LOCAL": return 2;
+            case "GLOBAL": return 3;
+            case "EXTRINSIC": return 4;
+            default: return 5;
+        }
+    }
+
+    // --- Database output ---
+
+    /**
+     * Write formatted code, tags, symbols, and cross-references to a SQLite database.
+     * Tables: source, tags, symbols, xref.
+     */
+    public void writeDatabase(String source, String dbPath) throws Exception {
+        Class.forName("org.sqlite.JDBC");
+        try (var conn = java.sql.DriverManager.getConnection("jdbc:sqlite:" + dbPath)) {
+            try (var st = conn.createStatement()) {
+                st.execute("DROP TABLE IF EXISTS source");
+                st.execute("DROP TABLE IF EXISTS tags");
+                st.execute("DROP TABLE IF EXISTS symbols");
+                st.execute("DROP TABLE IF EXISTS xref");
+                st.execute("DROP TABLE IF EXISTS formatted");
+                st.execute("""
+                    CREATE TABLE source (
+                        id INTEGER PRIMARY KEY,
+                        line_num INTEGER,
+                        text TEXT,
+                        depth INTEGER
+                    )""");
+                st.execute("""
+                    CREATE TABLE formatted (
+                        id INTEGER PRIMARY KEY,
+                        line_num INTEGER,
+                        text TEXT
+                    )""");
+                st.execute("""
+                    CREATE TABLE tags (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT,
+                        params TEXT,
+                        comment TEXT,
+                        start_line INTEGER,
+                        end_line INTEGER
+                    )""");
+                st.execute("""
+                    CREATE TABLE symbols (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT,
+                        kind TEXT,
+                        scope TEXT,
+                        def_line INTEGER,
+                        attributes TEXT
+                    )""");
+                st.execute("""
+                    CREATE TABLE xref (
+                        id INTEGER PRIMARY KEY,
+                        symbol_id INTEGER,
+                        line_num INTEGER,
+                        FOREIGN KEY(symbol_id) REFERENCES symbols(id)
+                    )""");
+            }
+
+            // Store source lines
+            String[] lines = source.split("\n", -1);
+            try (var ps = conn.prepareStatement("INSERT INTO source(line_num,text,depth) VALUES(?,?,?)")) {
+                for (int i = 0; i < lines.length; i++) {
+                    String line = lines[i];
+                    int depth = 0;
+                    while (depth < line.length() && line.charAt(depth) == '.') {
+                        if (depth + 1 < line.length() && Character.isDigit(line.charAt(depth + 1))) break;
+                        depth++;
+                    }
+                    ps.setInt(1, i + 1);
+                    ps.setString(2, line);
+                    ps.setInt(3, depth);
+                    ps.executeUpdate();
+                }
+            }
+
+            // Store formatted code
+            MFormatter fmt = new MFormatter(indentSize, false);
+            try (var ps = conn.prepareStatement("INSERT INTO formatted(line_num,text) VALUES(?,?)")) {
+                for (int i = 0; i < lines.length; i++) {
+                    ps.setInt(1, i + 1);
+                    ps.setString(2, fmt.format(lines[i]));
+                    ps.executeUpdate();
+                }
+            }
+
+            // Store tags
+            List<Tag> tags = new ArrayList<>();
+            Tag current = null;
+            Map<String, Symbol> symbols = new LinkedHashMap<>();
+
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+                int labelEnd = 0;
+                while (labelEnd < line.length() &&
+                       (Character.isLetterOrDigit(line.charAt(labelEnd)) ||
+                        line.charAt(labelEnd) == '%' || line.charAt(labelEnd) == '^')) {
+                    labelEnd++;
+                }
+                if (labelEnd == 0) continue;
+                if (labelEnd < line.length()) {
+                    char next = line.charAt(labelEnd);
+                    if (next != ' ' && next != '\t' && next != '(') continue;
+                }
+                String label = line.substring(0, labelEnd);
+                String params = "";
+                String tagLabel = label;
+                int paren = -1;
+                if (labelEnd < line.length() && line.charAt(labelEnd) == '(') {
+                    paren = labelEnd;
+                    int close = line.indexOf(')', labelEnd);
+                    if (close > 0) {
+                        params = line.substring(labelEnd, close + 1);
+                        tagLabel = line.substring(0, labelEnd);
+                    }
+                }
+                String rest = line.substring(labelEnd).strip();
+                if (paren > 0) rest = line.substring(line.indexOf(')', labelEnd) + 1).strip();
+                String comment = "";
+                int semi = rest.indexOf(';');
+                if (semi >= 0) comment = rest.substring(semi + 1).strip();
+
+                current = new Tag();
+                current.name = tagLabel;
+                current.params = params;
+                current.comment = comment;
+                current.startLine = i;
+                tags.add(current);
+            }
+            for (int i = 0; i < tags.size(); i++) {
+                tags.get(i).endLine = (i + 1 < tags.size()) ? tags.get(i + 1).startLine - 1 : lines.length - 1;
+            }
+
+            try (var ps = conn.prepareStatement("INSERT INTO tags(name,params,comment,start_line,end_line) VALUES(?,?,?,?,?)")) {
+                for (Tag tag : tags) {
+                    ps.setString(1, tag.name);
+                    ps.setString(2, tag.params);
+                    ps.setString(3, tag.comment);
+                    ps.setInt(4, tag.startLine + 1);
+                    ps.setInt(5, tag.endLine + 1);
+                    ps.executeUpdate();
+                }
+            }
+
+            // Store symbols and xref
+            // Reuse the xref logic
+            for (Tag tag : tags) {
+                for (int i = tag.startLine; i <= tag.endLine; i++) {
+                    String line = lines[i];
+                    String code = line;
+                    int semi = line.indexOf(';');
+                    if (semi >= 0) code = line.substring(0, semi);
+                    extractMetadata(code, tag);
+                }
+            }
+
+            // Build symbols map (same as xref method)
+            for (Tag tag : tags) {
+                Symbol tagSym = new Symbol();
+                tagSym.name = tag.name;
+                tagSym.kind = "TAG";
+                tagSym.scope = "(routine)";
+                tagSym.defLine = tag.startLine + 1;
+                tagSym.attributes = tag.params.isEmpty() ? "" : "params=" + tag.params;
+                symbols.put("TAG:" + tag.name, tagSym);
+
+                if (!tag.params.isEmpty()) {
+                    String paramStr = tag.params.substring(1, tag.params.length() - 1);
+                    for (String p : paramStr.split(",")) {
+                        p = p.trim();
+                        if (!p.isEmpty()) {
+                            Symbol ps = new Symbol();
+                            ps.name = p;
+                            ps.kind = "PARAM";
+                            ps.scope = tag.name;
+                            ps.defLine = tag.startLine + 1;
+                            ps.attributes = "of " + tag.name;
+                            symbols.put("PARAM:" + tag.name + ":" + p, ps);
+                        }
+                    }
+                }
+            }
+
+            // Collect references from extractMetadata results
+            for (Tag tag : tags) {
+                for (String call : tag.calls) {
+                    Symbol sym = symbols.get("TAG:" + call);
+                    if (sym != null) sym.refs.add(tag.startLine + 1);
+                }
+                for (String ext : tag.extrinsic) {
+                    Symbol sym = symbols.computeIfAbsent("EXT:" + ext, k -> {
+                        Symbol s = new Symbol();
+                        s.name = "$$" + ext;
+                        s.kind = "EXTRINSIC";
+                        s.scope = "(routine)";
+                        s.defLine = -1;
+                        return s;
+                    });
+                    sym.refs.add(tag.startLine + 1);
+                }
+                for (String g : tag.globalsRead) {
+                    Symbol sym = symbols.computeIfAbsent("GLOBAL:" + g, k -> {
+                        Symbol s = new Symbol();
+                        s.name = g;
+                        s.kind = "GLOBAL";
+                        s.scope = "(global)";
+                        s.defLine = -1;
+                        return s;
+                    });
+                    sym.refs.add(tag.startLine + 1);
+                }
+                for (String g : tag.globalsWritten) {
+                    Symbol sym = symbols.computeIfAbsent("GLOBAL:" + g, k -> {
+                        Symbol s = new Symbol();
+                        s.name = g;
+                        s.kind = "GLOBAL";
+                        s.scope = "(global)";
+                        s.defLine = -1;
+                        return s;
+                    });
+                    sym.refs.add(tag.startLine + 1);
+                }
+            }
+
+            // Insert symbols and xref
+            try (var psSym = conn.prepareStatement("INSERT INTO symbols(name,kind,scope,def_line,attributes) VALUES(?,?,?,?,?)");
+                 var psXref = conn.prepareStatement("INSERT INTO xref(symbol_id,line_num) VALUES(?,?)")) {
+                for (Symbol sym : symbols.values()) {
+                    psSym.setString(1, sym.name);
+                    psSym.setString(2, sym.kind);
+                    psSym.setString(3, sym.scope);
+                    psSym.setInt(4, sym.defLine);
+                    psSym.setString(5, sym.attributes);
+                    psSym.executeUpdate();
+                    // Get the generated id
+                    try (var rs = psSym.getGeneratedKeys()) {
+                        if (rs.next()) {
+                            int symId = rs.getInt(1);
+                            for (int lineNum : sym.refs) {
+                                psXref.setInt(1, symId);
+                                psXref.setInt(2, lineNum);
+                                psXref.executeUpdate();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Create indexes for searching
+            try (var st = conn.createStatement()) {
+                st.execute("CREATE INDEX idx_tags_name ON tags(name)");
+                st.execute("CREATE INDEX idx_symbols_name ON symbols(name)");
+                st.execute("CREATE INDEX idx_symbols_kind ON symbols(kind)");
+                st.execute("CREATE INDEX idx_xref_symbol ON xref(symbol_id)");
+                st.execute("CREATE INDEX idx_xref_line ON xref(line_num)");
+                st.execute("CREATE INDEX idx_source_line ON source(line_num)");
+                st.execute("CREATE INDEX idx_formatted_line ON formatted(line_num)");
+            }
+        }
+    }
+
     // --- CLI ---
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         int indent = 2;
         boolean breakLines = false;
         boolean organize = false;
+        boolean xref = false;
+        boolean dbMode = false;
+        String dbPath = null;
         String file = null;
         for (String a : args) {
             if (a.equals("--break")) breakLines = true;
             else if (a.equals("--organize") || a.equals("--diagram")) organize = true;
+            else if (a.equals("--xref") || a.equals("--attributes")) xref = true;
+            else if (a.equals("--db")) dbMode = true;
             else if (a.matches("\\d+")) indent = Integer.parseInt(a);
             else if (!a.equals("--indent")) file = a;
         }
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equals("--indent")) indent = Integer.parseInt(args[i + 1]);
+            if (args[i].equals("--db")) dbPath = args[i + 1];
         }
 
         String source;
@@ -605,7 +1135,14 @@ public final class MFormatter {
         }
 
         MFormatter fmt = new MFormatter(indent, breakLines);
-        if (organize) {
+        if (dbPath != null) {
+            fmt.writeDatabase(source, dbPath);
+            System.out.println("Database written: " + dbPath);
+            // Also print xref to stdout
+            System.out.print(fmt.xref(source));
+        } else if (xref) {
+            System.out.print(fmt.xref(source));
+        } else if (organize) {
             System.out.print(fmt.organize(source));
         } else {
             System.out.print(fmt.format(source));
