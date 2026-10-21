@@ -51,6 +51,14 @@ public final class Stores {
                 String path = dbFile != null ? dbFile : "mjvm.dat";
                 return new SqlStore(path);
             }
+            case "h2", "h2store", "mvstore" -> {
+                String path = dbFile != null ? dbFile : "mjvm.mv.db";
+                return new H2Store(path);
+            }
+            case "mapdb", "mapdbstore" -> {
+                String path = dbFile != null ? dbFile : "mjvm.mapdb";
+                return new MapDBStore(path);
+            }
             case "cdb2", "comdb2", "cdb2store" -> {
                 @SuppressWarnings("deprecation")
                 String pipe = System.getenv().getOrDefault("CDB2PIPE", "tools/cdb2pipe");

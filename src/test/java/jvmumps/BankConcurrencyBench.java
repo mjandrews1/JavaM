@@ -31,6 +31,10 @@ public final class BankConcurrencyBench {
         switch (type) {
             case "sql":
                 return new SqlStore(tmpDir + "/bank-" + System.nanoTime() + ".db");
+            case "h2":
+                return new H2Store(tmpDir + "/bank-" + System.nanoTime() + ".mv.db");
+            case "mapdb":
+                return new MapDBStore(tmpDir + "/bank-" + System.nanoTime() + ".mapdb");
             case "cdb2":
                 return new Cdb2Store("tools/cdb2pipe", "testdb", "local");
             default:
