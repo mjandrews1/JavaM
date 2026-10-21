@@ -32,7 +32,10 @@ public final class MFrontend {
     private List<Ir> compile(String line, boolean terminate) {
         List<Ir> out = new ArrayList<>();
         if (compileDepth == 0) { ifJmp0.clear(); endJmps.clear(); }
-        compileDepth++;
+        if (++compileDepth > 50) {
+            compileDepth--;
+            return out; // depth limit — return empty IR (VistA routines with deep FOR nesting)
+        }
         int i = 0;
         int n = line.length();
         while (i < n) {
@@ -712,6 +715,11 @@ public final class MFrontend {
     }
 
     private int compileForSpec(String line, int varStart, List<Ir> out, String var) {
+        if (++compileRecursionDepth > MAX_COMPILE_DEPTH) {
+            compileRecursionDepth--;
+            return line.length(); // depth limit — skip this FOR
+        }
+        try {
         int i = varStart + var.length();
         if (i < line.length() && line.charAt(i) == '=') i++;
         int j = i;
@@ -802,14 +810,25 @@ public final class MFrontend {
             out.set(jmp0At, Ir.jmp0(out.size()));
         }
         return line.length();
+        } finally {
+            compileRecursionDepth--;
+        }
     }
 
 
 
 
 
+    private int compileRecursionDepth = 0;
+    private static final int MAX_COMPILE_DEPTH = 100;
+
     void compileInto(String body, List<Ir> out) {
         if (body.isEmpty()) return;
+        if (++compileRecursionDepth > MAX_COMPILE_DEPTH) {
+            compileRecursionDepth--;
+            return; // depth limit — skip
+        }
+        try {
         int base = out.size();
         List<Ir> tmp = compile(body, false);
         // Offset local JMP/JMP0 targets by the insertion base so they
@@ -820,6 +839,9 @@ public final class MFrontend {
             } else {
                 out.add(ir);
             }
+        }
+        } finally {
+            compileRecursionDepth--;
         }
     }
 
