@@ -2,6 +2,8 @@ package jvmumps;
 
 import java.nio.file.*;
 import java.util.concurrent.*;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Bank concurrency benchmark — 4 corners × N breakpoints × store backend.
@@ -54,7 +56,8 @@ public final class BankConcurrencyBench {
         mjvm.runtime.IrMachine.run(libProg, rt, libTags);
         rt.reset();
         String code;
-        if (corner == 1 || corner == 3) {
+        boolean singleAcct = (corner % 2 == 1); // odd corners = 1 acct, even = 10 acct
+        if (singleAcct) {
             code = "D INITA^BANK(0) W $$BENCH^BANK(0," + n + "),!\n";
         } else {
             code = "D INIT^BANK W $$BENCH2^BANK(" + n + "),!\n";
@@ -79,12 +82,20 @@ public final class BankConcurrencyBench {
             var store = makeStore(storeType, tmpDir);
             runOne(bank, store, corner, n, 0);
         } else {
+            int instances = corner - 2; // corner 3=2inst, 4=3inst... use corner-2
+            // Actually: corners 1,2 = 1 inst; corner 3 = 2 inst; corner 4 = 2 inst
+            // Let's use a simpler mapping: instances = corner <= 2 ? 1 : corner - 1
+            int ninst = corner <= 2 ? 1 : corner - 1;
             var store = makeStore(storeType, tmpDir);
-            ExecutorService ex = Executors.newFixedThreadPool(2);
-            Future<?> f1 = ex.submit(() -> { runOne(bank, store, corner, n / 2, 0); return null; });
-            Future<?> f2 = ex.submit(() -> { runOne(bank, store, corner, n - n / 2, 1); return null; });
-            f1.get();
-            f2.get();
+            ExecutorService ex = Executors.newFixedThreadPool(ninst);
+            List<Future<?>> futures = new ArrayList<>();
+            long perInst = n / ninst;
+            for (int i = 0; i < ninst; i++) {
+                final long count = (i == ninst - 1) ? n - perInst * (ninst - 1) : perInst;
+                final int idx = i;
+                futures.add(ex.submit(() -> { runOne(bank, store, corner, count, idx); return null; }));
+            }
+            for (Future<?> f : futures) f.get();
             ex.shutdown();
         }
         long t1 = System.nanoTime();
@@ -108,13 +119,17 @@ public final class BankConcurrencyBench {
             "10 acct, 1 inst",
             "1 acct, 2 inst",
             "10 acct, 2 inst",
+            "1 acct, 3 inst",
+            "10 acct, 3 inst",
+            "1 acct, 4 inst",
+            "10 acct, 4 inst",
         };
 
         System.out.println("Bank concurrency benchmark — store=" + storeType + (JIT ? " [JIT]" : " [IR]"));
         System.out.println("corner              N          time_ms    txn/ms");
         System.out.println("------------------  ---------  -------    ------");
 
-        for (int corner = 1; corner <= 4; corner++) {
+        for (int corner = 1; corner <= 8; corner++) {
             if (onlyCorner > 0 && corner != onlyCorner) continue;
             for (long n : NS) {
                 if (onlyN > 0 && n != onlyN) continue;
