@@ -32,7 +32,8 @@ public final class MFrontend {
     private List<Ir> compile(String line, boolean terminate) {
         List<Ir> out = new ArrayList<>();
         if (compileDepth == 0) { ifJmp0.clear(); endJmps.clear(); }
-        if (++compileDepth > 20) {
+        if (++compileDepth > 30) {
+            System.err.println("DEPTH30 HIT at line=" + line.substring(0, Math.min(40, line.length())));
             compileDepth--;
             return out; // depth limit — return empty IR (VistA routines with deep FOR nesting)
         }
@@ -723,7 +724,7 @@ public final class MFrontend {
     }
 
     private int compileForSpec(String line, int varStart, List<Ir> out, String var) {
-        if (++compileRecursionDepth > 20) {
+        if (++compileRecursionDepth > 30) {
             compileRecursionDepth--;
             return line.length(); // depth limit — skip this FOR
         }
@@ -832,7 +833,7 @@ public final class MFrontend {
 
     void compileInto(String body, List<Ir> out) {
         if (body.isEmpty()) return;
-        if (++compileRecursionDepth > 20) {
+        if (++compileRecursionDepth > 30) {
             compileRecursionDepth--;
             return; // depth limit — skip
         }
