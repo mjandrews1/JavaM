@@ -52,6 +52,7 @@ public final class Stores {
                 return new SqlStore(path);
             }
             case "cdb2", "comdb2", "cdb2store" -> {
+                @SuppressWarnings("deprecation")
                 String pipe = System.getenv().getOrDefault("CDB2PIPE", "tools/cdb2pipe");
                 String db = System.getenv().getOrDefault("CDB2DB", "testdb");
                 String type = System.getenv().getOrDefault("CDB2TYPE", "local");
