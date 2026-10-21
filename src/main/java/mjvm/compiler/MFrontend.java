@@ -76,7 +76,7 @@ public final class MFrontend {
                 }
                 i = MFrontendCmds.compileSet(this, line, i, out);
                 if (setPostcond) {
-                    out.set(setJ0, Ir.jmp0(out.size()));
+                    if (setJ0 >= 0 && setJ0 < out.size()) out.set(setJ0, Ir.jmp0(out.size()));
                 }
             } else if (cmd.equals("W") || cmd.equals("WRITE")) {
                 i = MFrontendCmds.compileWrite(this, line, i, out);
@@ -108,7 +108,7 @@ public final class MFrontend {
                     out.add(Ir.ret());
                 }
                 if (hasPostcond) {
-                    out.set(postJ0, Ir.jmp0(out.size()));
+                    if (postJ0 >= 0 && postJ0 < out.size()) out.set(postJ0, Ir.jmp0(out.size()));
                     continue; // postcond false → fall through to next command
                 }
                 break;
@@ -147,7 +147,7 @@ public final class MFrontend {
                             pk[1] += base;
                             activePatches.add(pk);
                         }
-                        out.set(j0, Ir.jmp0(out.size()));
+                        if (j0 >= 0 && j0 < out.size()) out.set(j0, Ir.jmp0(out.size()));
                         if (isG) i = line.length();
                         continue;
                     }
@@ -216,7 +216,7 @@ public final class MFrontend {
                     out.add(Ir.call(target, 0));
                 }
                 if (hasPostcond) {
-                    out.set(postJ0, Ir.jmp0(out.size()));
+                    if (postJ0 >= 0 && postJ0 < out.size()) out.set(postJ0, Ir.jmp0(out.size()));
                 }
             } else if (cmd.equals("TSTART")) {
                 out.add(Ir.tstart());
@@ -325,10 +325,10 @@ public final class MFrontend {
             int end = out.size();
             while (!ifJmp0.isEmpty()) {
                 int ix = ifJmp0.pop();
-                if (ix >= 0 && ix < end) out.set(ix, Ir.jmp0(end));
+                if (ix >= 0 && ix < end && end <= out.size()) out.set(ix, Ir.jmp0(end));
             }
             for (int idx : endJmps) {
-                if (idx >= 0 && idx < end) out.set(idx, Ir.jmp(end));
+                if (idx >= 0 && idx < end && end <= out.size()) out.set(idx, Ir.jmp(end));
             }
             endJmps.clear();
         }
@@ -656,7 +656,7 @@ public final class MFrontend {
         out.add(Ir.jmp(-1));
         int elseStart = out.size();
         if (!ifJmp0.isEmpty()) {
-            out.set(ifJmp0.pop(), Ir.jmp0(elseStart));
+            int ifJ0 = ifJmp0.pop(); if (ifJ0 >= 0 && ifJ0 < out.size()) out.set(ifJ0, Ir.jmp0(elseStart));
         }
         return i;
     }
@@ -697,8 +697,8 @@ public final class MFrontend {
             compileInto(body, out);
             shiftPatches(outBefore);
             out.add(Ir.jmp(loopStart));
-            out.set(exitJmp, Ir.jmp(out.size()));
-            out.set(loopStart + 1, Ir.jmp0(bodyStart));
+            if (exitJmp >= 0 && exitJmp < out.size()) out.set(exitJmp, Ir.jmp(out.size()));
+            if (loopStart + 1 >= 0 && loopStart + 1 < out.size()) out.set(loopStart + 1, Ir.jmp0(bodyStart));
         } else {
             int loopStart = out.size();
             int outBefore = out.size();
@@ -807,7 +807,7 @@ public final class MFrontend {
         out.add(Ir.store(var));
         if (!infinite) {
             out.add(Ir.jmp(top));
-            out.set(jmp0At, Ir.jmp0(out.size()));
+            if (jmp0At >= 0 && jmp0At < out.size()) out.set(jmp0At, Ir.jmp0(out.size()));
         }
         return line.length();
         } finally {
