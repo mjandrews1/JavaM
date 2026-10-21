@@ -32,7 +32,7 @@ public final class MFrontend {
     private List<Ir> compile(String line, boolean terminate) {
         List<Ir> out = new ArrayList<>();
         if (compileDepth == 0) { ifJmp0.clear(); endJmps.clear(); }
-        if (++compileDepth > 50) {
+        if (++compileDepth > 20) {
             compileDepth--;
             return out; // depth limit — return empty IR (VistA routines with deep FOR nesting)
         }
@@ -340,15 +340,21 @@ public final class MFrontend {
     }
 
 
-    /** IR cache keyed by source hash — avoids re-parsing identical code. */
-    private static final java.util.concurrent.ConcurrentHashMap<String, Object[]> IR_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
-    private static final int IR_CACHE_MAX = 10000;
+    /** IR cache keyed by source hash — LRU eviction, bounded size. */
+    private static final int IR_CACHE_MAX = 500;
+    private static final java.util.LinkedHashMap<String, Object[]> IR_CACHE =
+            new java.util.LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Object[]> eldest) {
+                    return size() > IR_CACHE_MAX;
+                }
+            };
 
     public List<Ir> compileProgram(String code) {
         // Check cache first
         String hash = Integer.toHexString(code.hashCode());
-        Object[] cached = IR_CACHE.get(hash);
+        Object[] cached;
+        synchronized (IR_CACHE) { cached = IR_CACHE.get(hash); }
         if (cached != null) {
             @SuppressWarnings("unchecked")
             List<Ir> ir = (List<Ir>) cached[0];
@@ -365,8 +371,10 @@ public final class MFrontend {
             result = compileLine(code);
         }
         // Cache if not too large
-        if (IR_CACHE.size() < IR_CACHE_MAX && result.size() > 2) {
-            IR_CACHE.put(hash, new Object[]{result, lastTags});
+        if (false) { // disabled for one-shot compilation (VistA)
+            synchronized (IR_CACHE) {
+                IR_CACHE.put(hash, new Object[]{result, lastTags});
+            }
         }
         return result;
     }
@@ -715,7 +723,7 @@ public final class MFrontend {
     }
 
     private int compileForSpec(String line, int varStart, List<Ir> out, String var) {
-        if (++compileRecursionDepth > MAX_COMPILE_DEPTH) {
+        if (++compileRecursionDepth > 20) {
             compileRecursionDepth--;
             return line.length(); // depth limit — skip this FOR
         }
@@ -824,7 +832,7 @@ public final class MFrontend {
 
     void compileInto(String body, List<Ir> out) {
         if (body.isEmpty()) return;
-        if (++compileRecursionDepth > MAX_COMPILE_DEPTH) {
+        if (++compileRecursionDepth > 20) {
             compileRecursionDepth--;
             return; // depth limit — skip
         }

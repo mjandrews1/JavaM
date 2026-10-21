@@ -91,11 +91,19 @@
 
 - **Phase 1:** #203 ✅ (GETB 4.7x), #204 ✅ (SETB txn 7-18x), #195 ⬜
 - **Phase 2:** #194 ✅ (split stack -10%), #190 ⬜, #191 ⬜
-- **Phase 3:** #186 🔄 (depth guard half-done), #196 ✅ (bytecode caching), #189 (superseded by transpiler)
-- **Phase 3.5:** #207 ⬜ (H2 MVStore), #208 ⬜ (MapDB)
+- **Phase 3:** #186 ✅ (recursion guard), #196 ✅ (bytecode caching + LRU), #189 (superseded by transpiler)
+- **Phase 3.5:** #207 ✅ (H2Store 288x SqlStore), #208 ✅ (MapDBStore 47x SqlStore)
 - **Phase 4:** #197 ⬜, #192 (superseded by transpiler), #193 ⬜
+
+**Storage backends on U02 (txn/ms at N=10000, 10 acct):**
+| Store | 1 inst | 2 inst | 3 inst | 4 inst |
+|-------|--------|--------|--------|--------|
+| MStore | 5.1 | 12.0 | 17.5 | **28.0** |
+| H2Store | 3.6 | **10.9** | 4.5 | 7.3 |
+| MapDBStore | 2.9 | 2.5 | 2.8 | 3.0 |
 
 **Bank DEP baseline (U02, Cdb2Store):** 3144 → 2823 ms (-10%)
 **MStore JIT:** 39x on Mac, 7x on U02
+**VistA native:** 99.97% (15K), 99.95% (33K)
 
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-21
