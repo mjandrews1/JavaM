@@ -57,11 +57,10 @@ public final class VistAFullRun {
         System.out.println("### parse via " + engine + " — read-only" + (execute ? " + execute" : ""));
         System.out.println();
 
-        // Collect .m files grouped by package (parent of Routines/)
+        // Collect .m file paths grouped by package — use ArrayList not sorted stream
         Map<String, List<Path>> byPkg = new TreeMap<>();
         try (Stream<Path> s = Files.walk(Path.of(base))) {
             s.filter(p -> p.getFileName().toString().endsWith(".m"))
-                    .sorted()
                     .forEach(p -> {
                         String pkg = packageOf(base, p);
                         byPkg.computeIfAbsent(pkg, k -> new ArrayList<>()).add(p);
@@ -82,6 +81,7 @@ public final class VistAFullRun {
                 if (limit > 0 && scanned >= limit) break;
                 scanned++;
                 ps.total++;
+                if (scanned % 2000 == 0) System.gc();
                 String code;
                 try {
                     code = Files.readString(p);
@@ -93,8 +93,11 @@ public final class VistAFullRun {
                 long t0 = System.nanoTime();
                 try {
                     if (nativeMode) {
-                        var ir = new mjvm.compiler.MFrontend().compileProgram(code);
-                        if (ir.isEmpty()) {
+                        var ir = compileWithGuard(code);
+                        if (ir == null) {
+                            ps.fail++;
+                            ps.fails.add(rel(base, p) + "  PARSE (ENGINE GAP) StackOverflow in compiler");
+                        } else if (ir.isEmpty()) {
                             ps.empty++;
                             ps.fails.add(rel(base, p) + "  NO OPS (DIALECT)");
                         } else {
@@ -113,10 +116,10 @@ public final class VistAFullRun {
                             ps.ok++;
                         }
                     }
-                } catch (Exception e) {
+                } catch (Exception | StackOverflowError | OutOfMemoryError e) {
                     ps.fail++;
-                    ps.fails.add(rel(base, p) + "  PARSE (" + FileManTierASmoke.classify(e.toString())
-                            + ") " + truncate(e.getMessage()));
+                    String cls = e instanceof StackOverflowError ? "ENGINE GAP" : FileManTierASmoke.classify(e.toString());
+                    ps.fails.add(rel(base, p) + "  PARSE (" + cls + ") " + truncate(String.valueOf(e)));
                 }
                 ps.nanos += System.nanoTime() - t0;
             }
@@ -203,6 +206,15 @@ public final class VistAFullRun {
     static String truncate(String s) {
         if (s == null) return "";
         return s.length() > 120 ? s.substring(0, 120) + "…" : s;
+    }
+
+    /** Compile with OOM/stack guard — returns null on overflow. */
+    static java.util.List<mjvm.ir.Ir> compileWithGuard(String code) {
+        try {
+            return new mjvm.compiler.MFrontend().compileProgram(code);
+        } catch (StackOverflowError | OutOfMemoryError e) {
+            return null;
+        }
     }
 
     static String truncateName(String s) {
