@@ -56,11 +56,12 @@ public final class BankConcurrencyBench {
         mjvm.runtime.IrMachine.run(libProg, rt, libTags);
         rt.reset();
         String code;
-        boolean singleAcct = (corner % 2 == 1); // odd corners = 1 acct, even = 10 acct
-        if (singleAcct) {
+        int acctMode = (corner - 1) % 3; // 0=1 acct, 1=10 acct, 2=100 acct
+        if (acctMode == 0) {
             code = "D INITA^BANK(0) W $$BENCH^BANK(0," + n + "),!\n";
         } else {
-            code = "D INIT^BANK W $$BENCH2^BANK(" + n + "),!\n";
+            int nAccts = (acctMode == 1) ? 10 : 100;
+            code = "D INIT^BANK W $$BENCH2^BANK(" + n + "," + nAccts + "),!\n";
         }
         var benchProg = fe.compileProgram(code);
         if (JIT) {
@@ -85,7 +86,7 @@ public final class BankConcurrencyBench {
             int instances = corner - 2; // corner 3=2inst, 4=3inst... use corner-2
             // Actually: corners 1,2 = 1 inst; corner 3 = 2 inst; corner 4 = 2 inst
             // Let's use a simpler mapping: instances = corner <= 2 ? 1 : corner - 1
-            int ninst = corner <= 2 ? 1 : corner - 1;
+            int ninst = (corner - 1) / 3 + 1; // 1-3=1inst, 4-6=2inst, 7-9=3inst, 10-12=4inst
             var store = makeStore(storeType, tmpDir);
             ExecutorService ex = Executors.newFixedThreadPool(ninst);
             List<Future<?>> futures = new ArrayList<>();
@@ -115,21 +116,17 @@ public final class BankConcurrencyBench {
         }
 
         String[] cornerNames = {
-            "1 acct, 1 inst",
-            "10 acct, 1 inst",
-            "1 acct, 2 inst",
-            "10 acct, 2 inst",
-            "1 acct, 3 inst",
-            "10 acct, 3 inst",
-            "1 acct, 4 inst",
-            "10 acct, 4 inst",
+            "1 acct, 1 inst", "10 acct, 1 inst", "100 acct, 1 inst",
+            "1 acct, 2 inst", "10 acct, 2 inst", "100 acct, 2 inst",
+            "1 acct, 3 inst", "10 acct, 3 inst", "100 acct, 3 inst",
+            "1 acct, 4 inst", "10 acct, 4 inst", "100 acct, 4 inst",
         };
 
         System.out.println("Bank concurrency benchmark — store=" + storeType + (JIT ? " [JIT]" : " [IR]"));
         System.out.println("corner              N          time_ms    txn/ms");
         System.out.println("------------------  ---------  -------    ------");
 
-        for (int corner = 1; corner <= 8; corner++) {
+        for (int corner = 1; corner <= 12; corner++) {
             if (onlyCorner > 0 && corner != onlyCorner) continue;
             for (long n : NS) {
                 if (onlyN > 0 && n != onlyN) continue;
