@@ -107,13 +107,28 @@ public final class Cdb2BankStore implements BankStore, AutoCloseable {
         // SETB row: hexk \t hexsk \t hexval \t isnum \t hexname
         int sepIdx = key.indexOf(SEP);
         String name = sepIdx > 0 ? key.substring(0, sepIdx) : key;
-        // sk = collated subscript path (simplified: just the part after name)
-        String sk = sepIdx > 0 ? key.substring(sepIdx + 1) : "";
+        // sk = collated subscript path (same as Cdb2Store.sk)
+        String sk = "";
+        if (sepIdx > 0) {
+            String subs = key.substring(sepIdx + 1);
+            StringBuilder skb = new StringBuilder();
+            String[] parts = subs.split(String.valueOf(SEP));
+            for (int i = 0; i < parts.length; i++) {
+                if (i > 0) skb.append(SEP);
+                skb.append(collateKey(parts[i]));
+            }
+            sk = skb.toString();
+        }
         String row = hk + "\t" + hex(sk) + "\t" + hex(value) + "\t" + isnum + "\t" + hex(name);
         synchronized (this) {
             pending.put(hk, new String[]{row, value, isnum});
             if (pending.size() >= BATCH) flushPending();
         }
+    }
+
+    /** Collate subscript key — same as SqlStore.collateKey. */
+    static String collateKey(String s) {
+        return jvmumps.SqlStore.collateKey(s);
     }
 
     @Override
