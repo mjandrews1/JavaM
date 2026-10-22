@@ -12,6 +12,12 @@ import java.util.Map;
  * Direct-mode one physical line at a time. J13: tagged routines, DO/GOTO/XECUTE,
  * extrinsics {@code $$tag}.
  */
+/**
+ * @deprecated For execution, use {@link mjvm.compiler.MFrontend#compileProgram}
+ * + {@link mjvm.runtime.IrMachine#run} instead. LineInterp is retained for
+ * backward compatibility. See #197 for unification plan.
+ */
+@Deprecated
 public final class LineInterp {
     final StoreApi store;
     final ExprEval eval;
