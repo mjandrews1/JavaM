@@ -106,4 +106,43 @@
 **MStore JIT:** 39x on Mac, 7x on U02
 **VistA native:** 99.97% (15K), 99.95% (33K)
 
-**Last updated:** 2026-10-21
+**Last updated:** 2026-10-21\n
+---
+
+## Session Summary — 2026-10-20/21
+
+### Infrastructure freeze
+- Comdb2, tsx, MeshGraph, YottaDB frozen across U01/U02/U03
+- All services stopped/disabled/masked, cron cleared, ports clear
+- Flaming Yack Limited Company placeholder page live
+- ModemManager disabled on U03
+
+### Storage backends
+| Store | Peak TPS (U02) | Role |
+|-------|---------------|------|
+| **MStore** | **32,400** | Production (cache) |
+| **H2Store** | **19,000** | Production (persistence) |
+| **MapDBStore** | **3,700** | Production (persistence) |
+| SqlStore | ~200 | CI only |
+| Cdb2Store | — | Deprecated |
+
+### Engine work
+- **M→Java transpiler** — 39× MStore JIT speedup
+- **GETB batching** — 4.7× raw reads
+- **SETB txn wrapping** — 7-18× large batches
+- **Split stack (dvals)** — zero-alloc arithmetic
+- **Recursion depth guards** — VistA native at 99.97%
+- **Parser crash fixes** — 10× `out.set()` bounds checks
+
+### MFormatter (PR #214)
+- Command + special variable expansion
+- `--break` line breaking, `--organize` call graph
+- `--xref` attribute cross-reference (IBM PL/I style)
+- `--db` searchable SQLite database
+
+### Critical path status
+Phase 1-3.5 complete. Remaining: #190, #191, #195, #197, #193.
+
+**Bank DEP baseline (U02, Cdb2Store):** 3144 → 2823 ms (-10%)
+**MStore JIT:** 39x on Mac, 7x on U02
+**VistA native:** 99.97% (15K), 99.95% (33K)
