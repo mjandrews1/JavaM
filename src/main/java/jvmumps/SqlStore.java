@@ -158,6 +158,19 @@ public final class SqlStore implements StoreApi {
     }
 
     @Override
+    public MValue increment(List<String> path, boolean global, double amount) {
+        String k = key(path.get(0), path);
+        synchronized (this) {
+            // Single round-trip: read current, add, write back
+            MValue cur = get(path, global);
+            double v = cur.asNum() + amount;
+            MValue nv = MValue.ofNumber(v);
+            set(path, global, nv);
+            return nv;
+        }
+    }
+
+    @Override
     public int data(List<String> path, boolean global) {
         synchronized (conn) {
         String k = key(path.get(0), path);
