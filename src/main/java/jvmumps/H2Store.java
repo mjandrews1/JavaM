@@ -70,6 +70,56 @@ public final class H2Store implements StoreApi {
         }
     }
 
+    // --- String key fast path ---
+
+    @Override
+    public MValue get(String key, boolean global) {
+        ops.incrementAndGet();
+        String v = nodes.get(key);
+        if (v == null) return MValue.EMPTY;
+        return v.startsWith("#") ? MValue.ofNumber(ExprEval.toNum(v.substring(1)))
+                : MValue.ofString(v);
+    }
+
+    @Override
+    public void set(String key, boolean global, MValue v) {
+        ops.incrementAndGet();
+        String val = v.isnum ? "#" + ExprEval.mstr(v.num) : v.str;
+        synchronized (this) {
+            nodes.put(key, val);
+        }
+    }
+
+    @Override
+    public void kill(String key, boolean global) {
+        ops.incrementAndGet();
+        synchronized (this) {
+            nodes.remove(key);
+            String pfx = key + (char) 1;
+            java.util.List<String> toRemove = new java.util.ArrayList<>();
+            var it = nodes.keyIterator(pfx);
+            while (it.hasNext()) {
+                String dk = it.next();
+                if (!dk.startsWith(pfx)) break;
+                toRemove.add(dk);
+            }
+            for (String dk : toRemove) nodes.remove(dk);
+        }
+    }
+
+    @Override
+    public MValue increment(String key, boolean global, double amount) {
+        ops.incrementAndGet();
+        synchronized (this) {
+            String v = nodes.get(key);
+            double cur = 0;
+            if (v != null && v.startsWith("#")) cur = ExprEval.toNum(v.substring(1));
+            double next = cur + amount;
+            nodes.put(key, "#" + ExprEval.mstr(next));
+            return MValue.ofNumber(next);
+        }
+    }
+
     @Override
     public MValue increment(List<String> path, boolean global, double amount) {
         ops.incrementAndGet();

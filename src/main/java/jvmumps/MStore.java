@@ -92,6 +92,28 @@ public final class MStore implements StoreApi {
         n.hasValue = true;
     }
 
+    // --- String key fast path (delegates to tree navigation) ---
+
+    @Override
+    public MValue get(String key, boolean global) {
+        return get(StoreCore.splitKey(key), global);
+    }
+
+    @Override
+    public void set(String key, boolean global, MValue v) {
+        set(StoreCore.splitKey(key), global, v);
+    }
+
+    @Override
+    public void kill(String key, boolean global) {
+        kill(StoreCore.splitKey(key), global);
+    }
+
+    @Override
+    public MValue increment(String key, boolean global, double amount) {
+        return increment(StoreCore.splitKey(key), global, amount);
+    }
+
     /** Atomic increment: single node update, counts as 1 store op. */
     public MValue increment(List<String> path, boolean global, double amount) {
         if (global) ops.incrementAndGet();

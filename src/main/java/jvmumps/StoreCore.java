@@ -26,6 +26,42 @@ public interface StoreCore {
         return nv;
     }
 
+    // --- String key fast path (avoids List<String> allocation) ---
+
+    /** GET by string key (name\001sub1\001sub2...). Default converts to path. */
+    default MValue get(String key, boolean global) {
+        return get(splitKey(key), global);
+    }
+
+    /** SET by string key. Default converts to path. */
+    default void set(String key, boolean global, MValue v) {
+        set(splitKey(key), global, v);
+    }
+
+    /** KILL by string key. Default converts to path. */
+    default void kill(String key, boolean global) {
+        kill(splitKey(key), global);
+    }
+
+    /** Atomic increment by string key. Default converts to path. */
+    default MValue increment(String key, boolean global, double amount) {
+        return increment(splitKey(key), global, amount);
+    }
+
+    /** Split key string into path list. */
+    static List<String> splitKey(String key) {
+        java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < key.length(); i++) {
+            if (key.charAt(i) == 1) {
+                parts.add(key.substring(start, i));
+                start = i + 1;
+            }
+        }
+        parts.add(key.substring(start));
+        return parts;
+    }
+
 
     /**
      * Batch GET: read multiple keys in one round-trip where possible.
