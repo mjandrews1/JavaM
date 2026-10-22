@@ -11,8 +11,9 @@ import java.util.stream.Stream;
  * FileMan corpus walk (jvmumps#32) — parse every *.m under FILEMAN_CORPUS,
  * classify failures as ENGINE GAP / DIALECT / DATA. Read-only; no store writes.
  *
- * Usage: jvmumps.FileManCorpusWalk [--native] [FILEMAN_CORPUS]
- *   --native  run through MFrontend (native mJVM) instead of LineRoutine
+ * Usage: jvmumps.FileManCorpusWalk [--legacy] [FILEMAN_CORPUS]
+ *   --legacy  use LineRoutine parser (deprecated, for comparison only)
+ *   Default: MFrontend (native mJVM) — the unified compiler (#197)
  * Exit 0 always (report is the product). Set WALK_LIMIT to cap files (0 = all).
  */
 public final class FileManCorpusWalk {
@@ -23,10 +24,10 @@ public final class FileManCorpusWalk {
     }
 
     public static void main(String[] args) throws Exception {
-        boolean nativeMode = false;
+        boolean nativeMode = true;
         String base = root();
         for (String a : args) {
-            if (a.equals("--native")) nativeMode = true;
+            if (a.equals("--legacy")) nativeMode = false;
             else if (Files.isDirectory(Path.of(a))) base = a;
         }
         if (!Files.isDirectory(Path.of(base))) {
@@ -34,7 +35,7 @@ public final class FileManCorpusWalk {
             return;
         }
         int limit = Integer.parseInt(System.getenv().getOrDefault("WALK_LIMIT", "0"));
-        String engine = nativeMode ? "MFrontend (native mJVM)" : "LineRoutine.parseRoutine (JavaM)";
+        String engine = nativeMode ? "MFrontend (unified #197)" : "LineRoutine (deprecated)";
         System.out.println("## FileMan corpus walk (FILEMAN_CORPUS=" + base + ")");
         System.out.println("### parse via " + engine + " — read-only");
         System.out.println();
