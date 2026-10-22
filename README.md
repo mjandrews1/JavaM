@@ -241,6 +241,38 @@ JavaM supports four storage engines via the `StoreCore` capability interface:
 └─────────────────────────────────────────┘
 ```
 
+#### Quick start
+
+```java
+import jvmumps.*;
+import jvmumps.store.TieredStore;
+
+// Open store (creates disk + WAL files)
+TieredStore store = new TieredStore("app.mv.db", "app.wal");
+
+// Read/write — same API as any StoreCore
+store.set("USER\001NAME\001alice", true, MValue.ofString("Alice"));
+store.setNum("USER\001AGE\001alice", true, 30);
+String name = store.get("USER\001NAME\001alice", true).asStr();  // "Alice"
+double age = store.getNum("USER\001AGE\001alice", true);          // 30.0
+
+// Atomic increment (single op, no GET+SET)
+double next = store.increment("USER\001LOGIN\001alice", true, 1);  // 1.0
+
+// List operations
+store.kill("USER\001AGE\001alice", true);   // delete key + descendants
+
+// Close — flushes dirty pages + truncates WAL
+store.close();
+```
+
+Or via the `Stores` factory (auto-selects TieredStore for new files):
+
+```java
+StoreApi store = Stores.open("tiered", "app.mv.db");  // explicit
+StoreApi store = Stores.open(null, "app.mv.db");       // auto-detect
+```
+
 #### Configuration
 
 ```java
