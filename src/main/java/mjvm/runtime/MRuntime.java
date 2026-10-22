@@ -174,6 +174,54 @@ public final class MRuntime {
         return pathOf(name, null);
     }
 
+    /** Build interned string key (name\001sub1\001sub2...) — avoids List allocation. */
+    static String keyOf(String name, MRuntime rt) {
+        int p = name.indexOf('(');
+        if (p < 0) return name;
+        StringBuilder sb = new StringBuilder(name.substring(0, p));
+        String inner = name.substring(p + 1, name.lastIndexOf(')'));
+        int depth = 0;
+        boolean inS = false;
+        StringBuilder sub = new StringBuilder();
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (inS) {
+                sub.append(c);
+                if (c == '"') inS = false;
+                continue;
+            }
+            if (c == '"') {
+                inS = true;
+                sub.append(c);
+                continue;
+            }
+            if (c == '(') { depth++; sub.append(c); continue; }
+            if (c == ')') { depth--; sub.append(c); continue; }
+            if (c == ',' && depth == 0) {
+                sb.append((char) 1).append(evalSub(sub.toString(), rt));
+                sub.setLength(0);
+                continue;
+            }
+            sub.append(c);
+        }
+        if (sub.length() > 0) sb.append((char) 1).append(evalSub(sub.toString(), rt));
+        return sb.toString();
+    }
+
+    static String evalSub(String s, MRuntime rt) {
+        if (s.isEmpty()) return "";
+        if (s.startsWith("\"") && s.endsWith("\"")) return s.substring(1, s.length() - 1);
+        if (rt != null) {
+            try {
+                MValue v = rt.evalExpr(s);
+                return v.isnum ? jvmumps.ExprEval.mstr(v.num) : v.str;
+            } catch (Exception e) {
+                return s;
+            }
+        }
+        return s;
+    }
+
     static List<String> pathOf(String name, MRuntime rt) {
         List<String> path = new ArrayList<>();
         int p = name.indexOf('(');
@@ -270,12 +318,16 @@ public final class MRuntime {
 
     public MValue getVar(String name) {
         if (locals.containsKey(name)) return locals.get(name);
-        List<String> path = pathOf(name, this);
-        boolean glob = path.get(0).startsWith("^");
-        if (!glob && store.data(path, false) % 2 == 0) {
+        String key = keyOf(name, this);
+        boolean glob = key.startsWith("^");
+        if (!glob && store.data(splitKey(key), false) % 2 == 0) {
             throw new jvmumps.MError("Undefined local variable");
         }
-        return store.get(path, glob);
+        return store.get(key, glob);
+    }
+
+    static java.util.List<String> splitKey(String key) {
+        return jvmumps.StoreCore.splitKey(key);
     }
 
     public void setVar(String name, MValue v) {
@@ -295,9 +347,9 @@ public final class MRuntime {
 
     /** Atomic increment: delegates to store.increment for single-op path. */
     public jvmumps.MValue incrementVar(String name, double amount) {
-        List<String> path = pathOf(name, this);
-        boolean glob = path.get(0).startsWith("^");
-        return store.increment(path, glob, amount);
+        String key = keyOf(name, this);
+        boolean glob = key.startsWith("^");
+        return store.increment(key, glob, amount);
     }
 
     public boolean isQuit() {
