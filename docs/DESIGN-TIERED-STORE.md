@@ -330,16 +330,16 @@ Verify invariants:
 
 ## 7. Open Questions
 
-| # | Question | Options | Recommendation |
-|---|----------|---------|----------------|
-| 1 | **WAL format** | Binary vs text | Binary (compact, fast) |
-| 2 | **WAL fsync** | Every write vs batched | Batched (every N ms) |
-| 3 | **Flush granularity** | Per-key vs batch | Batch (single transaction) |
-| 4 | **Cache eviction** | LRU vs LFU vs write-aware | Write-aware LRU |
-| 5 | **Startup loading** | Full vs lazy vs predictive | Full (fast enough) |
-| 6 | **Disk store** | H2Store vs MapDBStore | H2Store (faster in benchmarks) |
-| 7 | **WAL location** | Separate file vs inside disk store | Separate file (independent) |
-| 8 | **Multi-instance** | Shared cache vs per-instance | Per-instance (simpler) |
+| # | Question | Decision | Rationale |
+|---|----------|----------|-----------|
+| 1 | **WAL format** | **Binary** | Compact, fast, checksum-friendly |
+| 2 | **WAL fsync** | **Batched** | Every N ms (100ms default). Speed + bounded loss. |
+| 3 | **Flush granularity** | Batch | Single transaction for dirty set |
+| 4 | **Cache eviction** | Write-aware LRU | Prefer clean pages, block only when necessary |
+| 5 | **Cache size** | **10,000 keys** | Bank fits (60 keys). VistA ~30% hit rate. |
+| 6 | **Disk store** | **H2Store** | Faster than MapDBStore in benchmarks |
+| 7 | **WAL location** | Separate file | Independent of disk store |
+| 8 | **Multi-instance** | Per-instance | Simpler, no shared cache coordination |
 
 ---
 
