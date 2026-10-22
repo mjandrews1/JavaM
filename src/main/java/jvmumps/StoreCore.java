@@ -26,6 +26,19 @@ public interface StoreCore {
         return nv;
     }
 
+    // --- Native numeric fast path (skips string format/parse) ---
+
+    /** GET numeric value directly (skips string format/parse). Default uses get(). */
+    default double getNum(String key, boolean global) {
+        MValue v = get(key, global);
+        return v == MValue.EMPTY ? 0 : v.asNum();
+    }
+
+    /** SET numeric value directly (skips string format/parse). Default uses set(). */
+    default void setNum(String key, boolean global, double val) {
+        set(key, global, MValue.ofNumber(val));
+    }
+
     // --- String key fast path (avoids List<String> allocation) ---
 
     /** GET by string key (name\001sub1\001sub2...). Default converts to path. */
