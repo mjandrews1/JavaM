@@ -209,6 +209,89 @@ Two products, one repo family:
 
 ---
 
+## Storage backends
+
+JavaM supports four storage engines via the `StoreCore` capability interface:
+
+| Store | Type | Persistence | Use case |
+|-------|------|-------------|----------|
+| **MStore** | ConcurrentHashMap | ❌ | Dev/test/cache |
+| **TieredStore** | LRU cache + H2 + WAL | ✅ | **Production default** |
+| **H2Store** | H2 MVStore (pure Java) | ✅ | Single-node persistence |
+| **MapDBStore** | MapDB BTreeMap | ✅ | Single-node persistence |
+| **SqlStore** | SQLite | ✅ | CI only (frozen) |
+
+### TieredStore
+
+**TieredStore** provides MStore-like latency with H2Store-like persistence through a write-back cache with WAL crash recovery.
+
+```
+┌─────────────────────────────────────────┐
+│              TieredStore                 │
+│  ┌──────────────┐    ┌───────────────┐  │
+│  │  LRU Cache   │◄──►│  Write-Buffer │  │
+│  │  (hot keys)  │    │  (dirty set)  │  │
+│  └──────┬───────┘    └───────┬───────┘  │
+│  ┌──────┴────────────────────┴───────┐  │
+│  │        Background Flusher         │  │
+│  └──────────────────┬────────────────┘  │
+│  ┌──────────────────┴────────────────┐  │
+│  │     H2Store (disk, source of truth)│  │
+│  └───────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+```
+
+#### Configuration
+
+```java
+// Default: 10K cache, 100ms WAL fsync
+TieredStore store = new TieredStore("data.mv.db", "data.wal");
+
+// Custom: cache size, fsync interval
+TieredStore store = new TieredStore("data.mv.db", "data.wal", 50000, 50);
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `maxCacheSize` | 10,000 | Max keys in LRU cache (0 = unlimited) |
+| `fsyncIntervalMs` | 100 | WAL fsync batch interval (0 = every write) |
+
+#### Tier thresholds
+
+| Threshold | Value | Behavior |
+|-----------|-------|----------|
+| **Cache size** | 10,000 keys | Evict LRU when exceeded. Bank fits (60 keys). VistA ~30% hit rate. |
+| **WAL buffer** | 8KB | Flushed on timer (100ms), not on size |
+| **WAL fsync** | 100ms | Batched fsync. Max data loss: 1 write. |
+| **Flush** | Background | Dirty pages written to H2Store asynchronously |
+| **Eviction** | Write-aware | Prefer clean pages. Dirty pages flushed before eviction. |
+
+#### Crash recovery
+
+- WAL append before cache update (durable)
+- Recovery: load disk → replay WAL → truncate WAL
+- **Max data loss: 1 write** (the one being WAL'd at crash time)
+- Checksums skip torn writes
+
+#### Performance (Mac, 10K bank transactions)
+
+| Store | txn/ms | p50 | p99 | Persistence |
+|-------|--------|-----|-----|-------------|
+| MStore | 56.1 | 0.8 us | 2.1 us | ❌ |
+| H2Store | 36.1 | 1.3 us | 13.1 us | ✅ |
+| **TieredStore** | 18.9 | 2.7 us | **6.9 us** | ✅ (WAL) |
+
+**TieredStore p99 is 1.9× faster than H2Store** — WAL buffer absorbs disk latency.
+
+#### CI regression guard
+
+`TieredStoreLatencySmoke` fails the build if TieredStore p99 exceeds H2Store p99. This runs automatically in CI on every PR.
+
+```bash
+# Run manually
+java -cp build:lib/* jvmumps.TieredStoreLatencySmoke
+```
+
 ## mJVM install & packaging (M9)
 
 ```bash
