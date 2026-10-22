@@ -7,10 +7,43 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
-## [Unreleased]
+## [1.1.0](https://github.com/mjandrews1/JavaM/releases/tag/v1.1.0) — 2026-10-22
+
+**GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v1.1.0
+
+### Added
+- **H2Store** — H2 MVStore backend (pure Java embedded B-tree). 288x faster than SqlStore. Peak 19,000 TPS on U02. (#207)
+- **MapDBStore** — MapDB BTreeMap backend (pure Java disk B-tree). 47x faster than SqlStore. Peak 3,700 TPS on U02. (#208)
+- **MFormatter** — M code expander tool with `--break`, `--organize`, `--xref` (IBM PL/I style attribute cross-reference), `--db` (searchable SQLite database). (#214)
+- **StoreCore capability split** — `StoreCore` + `StoreOrder` + `StoreLock` + `StoreTx`. Production engines: MStore + H2Store + MapDBStore. SqlStore CI-only. Cdb2Store deprecated. (#201)
+- **String key fast path** — `StoreCore.get/set/kill/increment(String key)` avoids `List<String>` allocation. (#195)
+- **Native numeric fast paths** — `StoreCore.getNum/setNum` skip string format/parse. (#190)
+- **Atomic increment** — `increment()` override in H2Store, MapDBStore, SqlStore. (#191)
+
+### Changed
+- **MFrontend is the sole compiler** — `LineRoutine`/`LineInterp` deprecated as execution paths. (#197)
+- **Cdb2Store deprecated** — Comdb2/tsx/MeshGraph/YottaDB infrastructure frozen. (#201)
+- **BankConcurrencyBench** — 12 corners (1/10/100 accounts × 1-4 instances). BANK.m BENCH2 accepts account count.
+- **Makefile** — excluded SQLite/Comdb2 backend smoke tests. Smoke 102 OK.
+
+### Fixed
+- **MFrontend recursion depth guards** — prevents stack overflow on VistA corpus. VistA native: 99.97% (15K), 99.95% (33K). (#186)
+- **Parser `out.set()` bounds checks** — fixed 3 IndexOutOfBoundsException crashes on VistA routines. (#212)
+- **Cdb2BankStore SETB collation** — `sk` field now properly collated. (#193)
+- **IR cache LRU eviction** — 500 entries, prevents OOM at 15K+ routines. (#196)
 
 ### Infrastructure
-- **U03 syslog collector** (ydb-infra#18) — rsyslog on U03 receiving from U01/U02 via imudp/imtcp port 514, routing to `/var/log/remote/utility-0{1,2,3}/syslog.log`. Root cause of initial routing failure: rsyslog drops to `syslog` user after startup (`$PrivDropToUser syslog`), but `/var/log/remote/` was `root:root` — `Permission denied` on every write, messages silently discarded. Fixed by `chown syslog:adm` + pre-creating log files.
+- **U03 syslog collector** (ydb-infra#18) — rsyslog on U03 receiving from U01/U02. Root cause: rsyslog drops to `syslog` user after startup, `/var/log/remote/` was `root:root`. Fixed by `chown syslog:adm`.
+- **All infrastructure frozen** — Comdb2, tsx, MeshGraph, YottaDB stopped/disabled/masked on U01/U02/U03. Flaming Yack Limited Company placeholder page live.
+
+### Performance (U02, txn/ms at N=10000)
+| Store | 1 inst | 2 inst | 4 inst |
+|-------|--------|--------|--------|
+| MStore | 5.5 | 32.4 | 14.3 |
+| H2Store | 3.8 | 10.9 | 15.5 |
+| MapDBStore | 1.5 | 2.6 | 2.8 |
+
+Peak TPS: MStore 32,400 · H2Store 19,000 · MapDBStore 3,700.
 
 ---
 
