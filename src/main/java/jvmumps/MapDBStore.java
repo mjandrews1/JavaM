@@ -75,6 +75,20 @@ public final class MapDBStore implements StoreApi {
     }
 
     @Override
+    public MValue increment(List<String> path, boolean global, double amount) {
+        ops.incrementAndGet();
+        String k = key(path.get(0), path);
+        synchronized (this) {
+            String v = nodes.get(k);
+            double cur = 0;
+            if (v != null && v.startsWith("#")) cur = ExprEval.toNum(v.substring(1));
+            double next = cur + amount;
+            nodes.put(k, "#" + ExprEval.mstr(next));
+            return MValue.ofNumber(next);
+        }
+    }
+
+    @Override
     public int data(List<String> path, boolean global) {
         ops.incrementAndGet();
         String k = key(path.get(0), path);
