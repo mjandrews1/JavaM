@@ -33,6 +33,11 @@ public final class BankConcurrencyBench {
         switch (type) {
             case "sql":
                 return new SqlStore(tmpDir + "/bank-" + System.nanoTime() + ".db");
+            case "tiered":
+                return new jvmumps.store.TieredStore(
+                    tmpDir + "/bank-" + System.nanoTime() + ".mv.db",
+                    tmpDir + "/bank-" + System.nanoTime() + ".wal",
+                    10000, 100);
             case "h2":
                 return new H2Store(tmpDir + "/bank-" + System.nanoTime() + ".mv.db");
             case "mapdb":
@@ -135,7 +140,7 @@ public final class BankConcurrencyBench {
                     double txnPerMs = ms > 0 ? n / ms : 0;
                     System.out.printf("%-18s  %-9d  %7.1f   %6.1f%n", cornerNames[corner - 1], n, ms, txnPerMs);
                 } catch (Throwable e) {
-                    System.out.printf("%-18s  %-9d  ERROR: %s%n", cornerNames[corner - 1], n, e.getMessage());
+                    System.out.printf("%-18s  %-9d  ERROR: %s: %s%n", cornerNames[corner-1], n, e.getClass().getSimpleName(), e.getMessage()); e.printStackTrace();
                 }
             }
         }

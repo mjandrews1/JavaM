@@ -8,8 +8,11 @@ import java.nio.file.Path;
  *
  * <ul>
  *   <li>{@code memory} — {@link MStore} (dev/test/cache, no persistence)
+ *   <li>{@code tiered} — {@code TieredStore} LRU cache + H2Store + WAL (default for persistence)
+ *   <li>{@code h2} — {@link H2Store} (single-node persistence)
+ *   <li>{@code mapdb} — {@link MapDBStore} (single-node persistence)
  *   <li>{@code sqlite} — {@link SqlStore} (CI/conformance only — rejected in production)
- *   <li>{@code cdb2} — {@link Cdb2Store} grouped Comdb2 (production; mesh/SQL plane)
+ *   <li>{@code cdb2} — {@link Cdb2Store} deprecated (infrastructure frozen)
  * </ul>
  *
  * <b>Production guard (#201):</b> when {@code MJVM_PROD=1}, SqlStore is rejected.
@@ -35,7 +38,14 @@ public final class Stores {
             k = System.getenv().getOrDefault("MJVM_STORE", "");
         }
         if (k == null || k.isEmpty()) {
-            k = (dbFile != null && Files.exists(Path.of(dbFile))) ? "sqlite" : "memory";
+            if (dbFile == null) {
+                k = "memory";
+            } else if (Files.exists(Path.of(dbFile)) && Files.size(Path.of(dbFile)) > 0) {
+                // Existing file — detect type by extension
+                k = dbFile.endsWith(".mv.db") ? "tiered" : "sqlite";
+            } else {
+                k = "tiered"; // new file → tiered store
+            }
         }
         switch (k.toLowerCase()) {
             case "memory", "mem", "mstore" -> {
@@ -50,6 +60,11 @@ public final class Stores {
                 }
                 String path = dbFile != null ? dbFile : "mjvm.dat";
                 return new SqlStore(path);
+            }
+            case "tiered", "tieredstore" -> {
+                String diskPath = dbFile != null ? dbFile : "mjvm.mv.db";
+                String walPath = diskPath + ".wal";
+                return new jvmumps.store.TieredStore(diskPath, walPath, 10000, 100);
             }
             case "h2", "h2store", "mvstore" -> {
                 String path = dbFile != null ? dbFile : "mjvm.mv.db";

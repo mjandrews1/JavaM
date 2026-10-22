@@ -30,12 +30,12 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     private static final char SEP = 1;
 
-    /** LRU cache — thread-safe via ConcurrentHashMap + ConcurrentLinkedDeque. */
+    /** LRU cache — ConcurrentHashMap (thread-safe). */
     private final ConcurrentHashMap<String, MValue> cache = new ConcurrentHashMap<>();
     /** Dirty keys (pending flush to disk). */
-    private final java.util.Set<String> dirty = ConcurrentHashMap.newKeySet();
-    /** LRU order — head = most recently used, tail = least. */
-    private final ConcurrentLinkedDeque<String> lru = new ConcurrentLinkedDeque<>();
+    private final ConcurrentHashMap.KeySetView<String, Boolean> dirty = ConcurrentHashMap.newKeySet();
+    /** LRU order — head = most recently used. */
+    private final java.util.concurrent.ConcurrentLinkedDeque<String> lru = new java.util.concurrent.ConcurrentLinkedDeque<>();
     /** LRU size limit. */
     private final int maxCacheSize;
     /** Disk store (source of truth). */
@@ -154,12 +154,14 @@ public final class TieredStore implements StoreApi, AutoCloseable {
     @Override
     public void kill(String key, boolean global) {
         ops.incrementAndGet();
-        // Remove from cache
-        cache.remove(key);
-        dirty.remove(key);
+        // Remove from cache (ConcurrentHashMap iteration is safe)
         String pfx = key + SEP;
+        cache.remove(key);
         cache.keySet().removeIf(k -> k.startsWith(pfx));
+        dirty.remove(key);
         dirty.removeIf(k -> k.startsWith(pfx));
+        // Remove from LRU
+        lru.remove(key);
         // Append to WAL
         try {
             wal.appendKill(key);
@@ -327,19 +329,17 @@ public final class TieredStore implements StoreApi, AutoCloseable {
         }
     }
 
-    /** Move key to front of LRU (most recently used). */
+    /** Mark key as accessed (LinkedHashMap handles LRU order automatically). */
     private void touchLru(String key) {
-        lru.remove(key); // O(n) — could optimize with a linked hash map
-        lru.addFirst(key);
+        // LinkedHashMap access-order mode handles this on get/put
     }
 
     /** Evict least recently used key. Prefer clean pages. */
     private void evictOldest() {
-        // First pass: find clean page (not dirty)
-        for (Iterator<String> it = lru.iterator(); it.hasNext(); ) {
-            String key = it.next();
+        // Find clean page (not dirty) — iterate LRU from oldest
+        for (String key : lru) {
             if (!dirty.contains(key)) {
-                it.remove();
+                lru.remove(key);
                 cache.remove(key);
                 return;
             }
