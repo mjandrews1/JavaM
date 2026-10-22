@@ -35,9 +35,9 @@ ITEST_CLASSES :=
 
 all: $(OUT)/jvmumps/CorpusRunner.class
 
-$(OUT)/jvmumps/CorpusRunner.class: src/main/java/jvmumps/*.java
+$(OUT)/jvmumps/CorpusRunner.class: src/main/java/jvmumps/*.java src/main/java/jvmumps/store/*.java
 	mkdir -p $(OUT)
-	$(JAVAC) --release 21 -cp $(LIBS) -d $(OUT) src/main/java/jvmumps/*.java
+	$(JAVAC) --release 21 -cp $(LIBS) -d $(OUT) src/main/java/jvmumps/*.java src/main/java/jvmumps/store/*.java
 
 # Full unit/smoke suite — every *Smoke class (jvmumps#64).
 smoke: all mjvm
