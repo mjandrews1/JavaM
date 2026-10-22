@@ -35,6 +35,9 @@ public final class WriteAheadLog implements Closeable {
     private final Object lock = new Object();
     private long lastFsync = System.currentTimeMillis();
     private final long fsyncIntervalMs;
+    /** Write buffer — batch appends, flush to channel periodically. */
+    private final ByteArrayOutputStream writeBuffer = new ByteArrayOutputStream();
+    private static final int BUFFER_FLUSH_SIZE = 8192; // 8KB
 
     public WriteAheadLog(String path, long fsyncIntervalMs) throws IOException {
         this.walPath = Path.of(path);
@@ -84,32 +87,50 @@ public final class WriteAheadLog implements Closeable {
             crc.update(buf.array(), 0, buf.position());
             buf.putInt((int) crc.getValue());
 
-            // Write to channel
-            buf.flip();
-            while (buf.hasRemaining()) {
-                channel.write(buf);
-            }
+            // Buffer write (batched)
+            writeBuffer.write(buf.array(), 0, buf.position());
         }
 
+        // Flush buffer if large enough
+        maybeFlushBuffer();
         // Batched fsync
         maybeFsync();
         return seq;
     }
 
-    /** Batched fsync — only sync if interval elapsed. */
+    /** Flush write buffer to channel if large enough. */
+    private void maybeFlushBuffer() throws IOException {
+        synchronized (lock) {
+            if (writeBuffer.size() >= BUFFER_FLUSH_SIZE) {
+                channel.write(ByteBuffer.wrap(writeBuffer.toByteArray()));
+                writeBuffer.reset();
+            }
+        }
+    }
+
+    /** Batched fsync — only sync if interval elapsed. Also flushes buffer. */
     private void maybeFsync() throws IOException {
         long now = System.currentTimeMillis();
         synchronized (lock) {
             if (now - lastFsync >= fsyncIntervalMs) {
+                // Flush remaining buffer before fsync
+                if (writeBuffer.size() > 0) {
+                    channel.write(ByteBuffer.wrap(writeBuffer.toByteArray()));
+                    writeBuffer.reset();
+                }
                 channel.force(false);
                 lastFsync = now;
             }
         }
     }
 
-    /** Force fsync now (for shutdown). */
+    /** Force fsync now (for shutdown). Flushes buffer first. */
     public void fsync() throws IOException {
         synchronized (lock) {
+            if (writeBuffer.size() > 0) {
+                channel.write(ByteBuffer.wrap(writeBuffer.toByteArray()));
+                writeBuffer.reset();
+            }
             channel.force(false);
             lastFsync = System.currentTimeMillis();
         }

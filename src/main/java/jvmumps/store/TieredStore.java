@@ -30,12 +30,10 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     private static final char SEP = 1;
 
-    /** LRU cache — thread-safe via ConcurrentHashMap + ConcurrentLinkedDeque. */
-    private final ConcurrentHashMap<String, MValue> cache = new ConcurrentHashMap<>();
+    /** LRU cache — LinkedHashMap with access order (O(1) get/put/remove). */
+    private final LinkedHashMap<String, MValue> cache = new LinkedHashMap<>(16, 0.75f, true);
     /** Dirty keys (pending flush to disk). */
     private final java.util.Set<String> dirty = ConcurrentHashMap.newKeySet();
-    /** LRU order — head = most recently used, tail = least. */
-    private final ConcurrentLinkedDeque<String> lru = new ConcurrentLinkedDeque<>();
     /** LRU size limit. */
     private final int maxCacheSize;
     /** Disk store (source of truth). */
@@ -121,12 +119,12 @@ public final class TieredStore implements StoreApi, AutoCloseable {
     @Override
     public MValue get(String key, boolean global) {
         ops.incrementAndGet();
-        // Check cache first
-        MValue v = cache.get(key);
-        if (v != null) {
-            touchLru(key);
-            return v;
+        // Check cache first (LinkedHashMap access-order updates LRU)
+        MValue v;
+        synchronized (cache) {
+            v = cache.get(key);
         }
+        if (v != null) return v;
         // Cache miss — read from disk
         v = disk.get(key, global);
         if (v != MValue.EMPTY) {
@@ -139,9 +137,10 @@ public final class TieredStore implements StoreApi, AutoCloseable {
     public void set(String key, boolean global, MValue v) {
         ops.incrementAndGet();
         // Write to cache (instant)
-        cache.put(key, v);
+        synchronized (cache) {
+            cache.put(key, v);
+        }
         dirty.add(key);
-        touchLru(key);
         // Append to WAL (durable)
         try {
             String val = v.isnum ? "#" + ExprEval.mstr(v.num) : v.str;
@@ -319,40 +318,42 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     /** Add to cache with LRU eviction. */
     private void putCache(String key, MValue v) {
-        cache.put(key, v);
-        touchLru(key);
-        // Evict if over limit
-        while (cache.size() > maxCacheSize) {
-            evictOldest();
+        synchronized (cache) {
+            cache.put(key, v);
+            // Evict if over limit
+            while (cache.size() > maxCacheSize) {
+                evictOldest();
+            }
         }
     }
 
-    /** Move key to front of LRU (most recently used). */
+    /** Mark key as accessed (LinkedHashMap handles LRU order automatically). */
     private void touchLru(String key) {
-        lru.remove(key); // O(n) — could optimize with a linked hash map
-        lru.addFirst(key);
+        // LinkedHashMap access-order mode handles this on get/put
     }
 
     /** Evict least recently used key. Prefer clean pages. */
     private void evictOldest() {
-        // First pass: find clean page (not dirty)
-        for (Iterator<String> it = lru.iterator(); it.hasNext(); ) {
-            String key = it.next();
-            if (!dirty.contains(key)) {
-                it.remove();
-                cache.remove(key);
-                return;
+        synchronized (cache) {
+            // First pass: find clean page (not dirty) — LinkedHashMap iterates in LRU order
+            Iterator<Map.Entry<String, MValue>> it = cache.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<String, MValue> entry = it.next();
+                if (!dirty.contains(entry.getKey())) {
+                    it.remove();
+                    return;
+                }
             }
-        }
-        // All pages dirty — evict oldest (blocking flush)
-        String oldest = lru.pollLast();
-        if (oldest != null) {
-            MValue v = cache.get(oldest);
-            if (v != null) {
-                disk.set(oldest, true, v);
-                dirty.remove(oldest);
+            // All pages dirty — evict oldest (blocking flush)
+            if (!cache.isEmpty()) {
+                Iterator<Map.Entry<String, MValue>> it2 = cache.entrySet().iterator();
+                Map.Entry<String, MValue> oldest = it2.next();
+                String key = oldest.getKey();
+                MValue v = oldest.getValue();
+                it2.remove();
+                disk.set(key, true, v);
+                dirty.remove(key);
             }
-            cache.remove(oldest);
         }
     }
 
@@ -367,7 +368,7 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     /** Get cache size (for testing). */
     public int cacheSize() {
-        return cache.size();
+        synchronized (cache) { return cache.size(); }
     }
 
     /** Get dirty count (for testing). */
