@@ -91,33 +91,27 @@ public final class WriteAheadLog implements Closeable {
             writeBuffer.write(buf.array(), 0, buf.position());
         }
 
-        // Flush buffer if large enough
-        maybeFlushBuffer();
-        // Batched fsync
+        // Batched fsync (handles buffer flush on timer)
         maybeFsync();
         return seq;
     }
 
-    /** Flush write buffer to channel if large enough. */
-    private void maybeFlushBuffer() throws IOException {
+    /** Flush write buffer to channel. Called from maybeFsync (timer-based). */
+    private void flushBuffer() throws IOException {
         synchronized (lock) {
-            if (writeBuffer.size() >= BUFFER_FLUSH_SIZE) {
+            if (writeBuffer.size() > 0) {
                 channel.write(ByteBuffer.wrap(writeBuffer.toByteArray()));
                 writeBuffer.reset();
             }
         }
     }
 
-    /** Batched fsync — only sync if interval elapsed. Also flushes buffer. */
+    /** Batched fsync — flush buffer + sync if interval elapsed. */
     private void maybeFsync() throws IOException {
         long now = System.currentTimeMillis();
         synchronized (lock) {
             if (now - lastFsync >= fsyncIntervalMs) {
-                // Flush remaining buffer before fsync
-                if (writeBuffer.size() > 0) {
-                    channel.write(ByteBuffer.wrap(writeBuffer.toByteArray()));
-                    writeBuffer.reset();
-                }
+                flushBuffer();
                 channel.force(false);
                 lastFsync = now;
             }
