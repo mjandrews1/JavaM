@@ -70,6 +70,25 @@ public final class H2Store implements StoreApi {
         }
     }
 
+    // --- Native numeric fast path ---
+
+    @Override
+    public double getNum(String key, boolean global) {
+        ops.incrementAndGet();
+        String v = nodes.get(key);
+        if (v == null) return 0;
+        if (v.startsWith("#")) return ExprEval.toNum(v.substring(1));
+        return ExprEval.toNum(v);
+    }
+
+    @Override
+    public void setNum(String key, boolean global, double val) {
+        ops.incrementAndGet();
+        synchronized (this) {
+            nodes.put(key, "#" + ExprEval.mstr(val));
+        }
+    }
+
     // --- String key fast path ---
 
     @Override

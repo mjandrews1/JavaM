@@ -326,6 +326,26 @@ public final class MRuntime {
         return store.get(key, glob);
     }
 
+    /** Get numeric value directly (skips string format/parse). */
+    public double getNum(String name) {
+        if (locals.containsKey(name)) return locals.get(name).asNum();
+        String key = keyOf(name, this);
+        boolean glob = key.startsWith("^");
+        return store.getNum(key, glob);
+    }
+
+    /** Set numeric value directly (skips string format/parse). */
+    public void setNum(String name, double val) {
+        String key = keyOf(name, this);
+        boolean glob = key.startsWith("^");
+        if (glob) {
+            store.setNum(key, true, val);
+        } else {
+            locals.put(name, MValue.ofNumber(val));
+            store.setNum(key, false, val);
+        }
+    }
+
     static java.util.List<String> splitKey(String key) {
         return jvmumps.StoreCore.splitKey(key);
     }
