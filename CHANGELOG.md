@@ -7,6 +7,57 @@ Internal checkout dir may still be `~/jvmumps`; **product / GitHub name is JavaM
 
 ---
 
+## [1.2.0](https://github.com/mjandrews1/JavaM/releases/tag/v1.2.0) — 2026-10-23
+
+**GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v1.2.0
+
+### Milestone: Production Cutover Complete
+
+**JavaM frozen as semantic reference oracle. mJVM is the production engine.**
+
+### Added
+- **TieredStore** — LRU cache + H2Store + WAL crash recovery. Single-writer + read-only readers (snapshot-based). Binary WAL with CRC32 checksums, batched fsync (100ms). (#230)
+- **BytecodeEmitter: all 46 IR ops** — complete bytecode emission path. 24× JIT speedup vs IR interpreter. (#231, #232)
+- **mJVM CLI JIT** — `--useClass` uses JavaSourceEmitter for 24× speedup. (#233)
+- **BankScaleBench** — 10K accounts × 1-10 instances, 0-250K accounts. (#228)
+- **TieredStoreLatencySmoke** — CI regression guard (TieredStore p99 ≤ H2Store p99). (#225)
+- **WalLockSmoke** — multi-process WAL locking test. (#229)
+- **TieredStoreRwSmoke** — single-writer + read-only reader test. (#230)
+
+### Changed
+- **JavaM frozen** — `StoreApi` FROZEN notice. New features go to mJVM. (#234)
+- **`--native` flag removed** — MFrontend is the unified compiler. (#234)
+- **BytecodeEmitter** — all 46 IR ops covered (was 19). (#232)
+
+### Fixed
+- **Multi-process WAL locking** — flock prevents concurrent corruption. (#229)
+- **TieredStore CME** — ConcurrentHashMap + ConcurrentLinkedDeque for thread safety. (#224)
+- **WAL flush policy** — timer-based (100ms) instead of buffer-size. (#225)
+
+### Performance (Mac, MStore, 10K txn)
+| Method | Time | Speedup |
+|--------|------|---------|
+| IR interpreter | 21.7 ms | 1× |
+| **JavaSource JIT** | **0.9 ms** | **24×** |
+
+| Store | Peak TPS (U02) |
+|-------|---------------|
+| MStore | 32,400 |
+| H2Store | 19,000 |
+| MapDBStore | 3,700 |
+| TieredStore | — (persistence) |
+
+### Verification
+- **VistA full run:** 99.97% (33,942/33,951) — 0 ENGINE GAP
+- **Bank benchmark:** 707 txn/ms peak (10 acct, 4 inst)
+- **Dafny:** 403 lemmas, 0 errors, 0 TODOs
+- **Smoke:** 106 OK
+
+### Closed issues
+#34, #179, #187, #199 (all engineering issues)
+
+---
+
 ## [1.1.0](https://github.com/mjandrews1/JavaM/releases/tag/v1.1.0) — 2026-10-22
 
 **GitHub release:** https://github.com/mjandrews1/JavaM/releases/tag/v1.1.0
