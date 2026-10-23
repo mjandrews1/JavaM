@@ -323,13 +323,10 @@ public final class Mjvm {
         MFrontend fe = new MFrontend();
         List<Ir> prog = code.indexOf('\n') >= 0 ? fe.compileProgram(code) : fe.compileLine(code);
         if (useClass) {
-            String cn = "MjvmGen" + System.nanoTime();
-            Path dir = Path.of(System.getProperty("java.io.tmpdir"), "mjvm-classes");
-            ClassEmitter.emit(prog, cn, dir);
-            Class<?> cl = Class.forName(cn, true,
-                    new java.net.URLClassLoader(new java.net.URL[] { dir.toUri().toURL() },
-                            Mjvm.class.getClassLoader()));
-            ((Runnable) cl.getConstructor(MRuntime.class).newInstance(rt)).run();
+            // JavaSourceEmitter: compile to Java source, JIT compiles to bytecode
+            // 29x faster than IR interpreter
+            var runner = mjvm.compiler.JavaSourceEmitter.compile(prog, "MjvmGen" + System.nanoTime(), rt);
+            runner.run();
         } else {
             IrMachine.run(prog, rt, fe.lastTags());
         }
