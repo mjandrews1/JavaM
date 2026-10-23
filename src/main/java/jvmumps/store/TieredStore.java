@@ -36,49 +36,78 @@ public final class TieredStore implements StoreApi, AutoCloseable {
     private final ConcurrentHashMap.KeySetView<String, Boolean> dirty = ConcurrentHashMap.newKeySet();
     /** LRU order — head = most recently used. */
     private final java.util.concurrent.ConcurrentLinkedDeque<String> lru = new java.util.concurrent.ConcurrentLinkedDeque<>();
+    /** Read-only mode: no WAL lock, no writes, no background flusher. */
+    private final boolean readOnly;
     /** LRU size limit. */
     private final int maxCacheSize;
     /** Disk store (source of truth). */
     private final H2Store disk;
     /** Write-ahead log for crash recovery. */
-    private final WriteAheadLog wal;
+    private WriteAheadLog wal;
     /** Background flusher. */
-    private final ScheduledExecutorService flusher;
+    private ScheduledExecutorService flusher;
     /** Op counter. */
     private final AtomicLong ops = new AtomicLong();
     /** Closed flag. */
     private volatile boolean closed;
 
     /**
-     * Open TieredStore with disk backing and WAL.
-     * @param diskPath H2Store file path
-     * @param walPath WAL file path
-     * @param maxCacheSize maximum keys in LRU cache
-     * @param fsyncIntervalMs WAL fsync interval (batched)
+     * Open TieredStore in write mode (single writer).
+     * Acquires exclusive WAL lock. Blocks other writers.
      */
     public TieredStore(String diskPath, String walPath, int maxCacheSize, long fsyncIntervalMs) throws Exception {
+        this(diskPath, walPath, maxCacheSize, fsyncIntervalMs, false);
+    }
+
+    /**
+     * Open TieredStore.
+     * @param readOnly true = read-only reader (no WAL lock, no writes)
+     */
+    public TieredStore(String diskPath, String walPath, int maxCacheSize, long fsyncIntervalMs,
+                       boolean readOnly) throws Exception {
         this.maxCacheSize = maxCacheSize;
-        this.disk = new H2Store(diskPath);
-        this.wal = new WriteAheadLog(walPath, fsyncIntervalMs);
+        this.readOnly = readOnly;
+        this.disk = new H2Store(diskPath, readOnly);
+        if (readOnly) {
+            this.wal = null; // no WAL in read-only mode
+            this.flusher = null; // no background flusher
+        } else {
+            this.wal = new WriteAheadLog(walPath, fsyncIntervalMs);
+        }
 
         // Startup: load from disk (checkpoint)
         loadFromDisk();
 
-        // Startup: replay WAL (recovery)
-        replayWal();
+        // Startup: replay WAL (recovery) — skip in read-only mode
+        if (!readOnly) {
+            replayWal();
+        }
 
-        // Start background flusher (every 100ms)
-        this.flusher = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "tiered-store-flusher");
-            t.setDaemon(true);
-            return t;
-        });
-        this.flusher.scheduleAtFixedRate(this::backgroundFlush, 100, 100, TimeUnit.MILLISECONDS);
+        // Start background flusher — skip in read-only mode
+        if (!readOnly) {
+            this.flusher = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "tiered-store-flusher");
+                t.setDaemon(true);
+                return t;
+            });
+            this.flusher.scheduleAtFixedRate(this::backgroundFlush, 100, 100, TimeUnit.MILLISECONDS);
+        }
     }
 
     /** Convenience: default 10K cache, 100ms fsync. */
     public TieredStore(String diskPath, String walPath) throws Exception {
         this(diskPath, walPath, 10000, 100);
+    }
+
+    /** Open read-only reader via snapshot (avoids H2 file lock). */
+    public static TieredStore openReadOnly(String diskPath) throws Exception {
+        // Create snapshot of the disk file (copy)
+        String snapshotPath = diskPath + ".snapshot." + System.nanoTime();
+        java.nio.file.Files.copy(
+            java.nio.file.Path.of(diskPath),
+            java.nio.file.Path.of(snapshotPath),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        return new TieredStore(snapshotPath, snapshotPath + ".wal", 10000, 100, true);
     }
 
     // --- Startup ---
@@ -137,6 +166,7 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     @Override
     public void set(String key, boolean global, MValue v) {
+        if (readOnly) throw new MError("TieredStore is read-only");
         ops.incrementAndGet();
         // Write to cache (instant)
         cache.put(key, v);
@@ -153,6 +183,7 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     @Override
     public void kill(String key, boolean global) {
+        if (readOnly) throw new MError("TieredStore is read-only");
         ops.incrementAndGet();
         // Remove from cache (ConcurrentHashMap iteration is safe)
         String pfx = key + SEP;
@@ -183,6 +214,7 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     @Override
     public MValue increment(String key, boolean global, double amount) {
+        if (readOnly) throw new MError("TieredStore is read-only");
         ops.incrementAndGet();
         // Read from cache (fast path)
         MValue cur = cache.get(key);
@@ -255,8 +287,9 @@ public final class TieredStore implements StoreApi, AutoCloseable {
 
     // --- Lifecycle ---
 
-    /** Flush all dirty pages to disk. Blocks until complete. */
+    /** Flush all dirty pages to disk. Blocks until complete. No-op in read-only. */
     public void flush() {
+        if (readOnly) return;
         synchronized (this) {
             for (String key : dirty) {
                 MValue v = cache.get(key);
@@ -286,6 +319,10 @@ public final class TieredStore implements StoreApi, AutoCloseable {
     @Override
     public void close() {
         closed = true;
+        if (readOnly) {
+            disk.close();
+            return;
+        }
         flusher.shutdown();
         try {
             flusher.awaitTermination(5, TimeUnit.SECONDS);
@@ -363,6 +400,11 @@ public final class TieredStore implements StoreApi, AutoCloseable {
             sb.append(SEP).append(path.get(i));
         }
         return sb.toString();
+    }
+
+    /** True if this is a read-only reader. */
+    public boolean isReadOnly() {
+        return readOnly;
     }
 
     /** Get cache size (for testing). */
