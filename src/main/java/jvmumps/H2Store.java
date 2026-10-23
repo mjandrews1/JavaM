@@ -21,7 +21,18 @@ public final class H2Store implements StoreApi {
     private final AtomicLong ops = new AtomicLong();
 
     public H2Store(String path) {
-        store = org.h2.mvstore.MVStore.open(path);
+        this(path, false);
+    }
+
+    public H2Store(String path, boolean readOnly) {
+        if (readOnly) {
+            store = new org.h2.mvstore.MVStore.Builder()
+                .fileName(path)
+                .readOnly()
+                .open();
+        } else {
+            store = org.h2.mvstore.MVStore.open(path);
+        }
         nodes = store.openMap("nodes");
     }
 
@@ -108,6 +119,8 @@ public final class H2Store implements StoreApi {
             nodes.put(key, val);
         }
     }
+
+    // Note: readOnly mode is enforced by MVStore itself (throws on write)
 
     @Override
     public void kill(String key, boolean global) {
