@@ -376,11 +376,166 @@ public final class BytecodeEmitter {
                     }
                     case mjvm.ir.Ir.PUSH_REG -> {
                         // Push last stored value (peephole for redundant reads)
-                        // Simple: push empty (no-op in bytecode path)
                         c.aload(2); c.iload(3);
                         c.u1(0x01); // aconst_null (placeholder for EMPTY)
                         c.aastore();
                         c.iinc(3, 1);
+                    }
+                    case mjvm.ir.Ir.BIND -> {
+                        // BIND: rt.setVar(name, pop()) — bind parameter
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "setVar",
+                                "(Ljava/lang/String;Ljvmumps/MValue;)V"));
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.CALL_PC -> {
+                        // CALL_PC: call subroutine at PC (no return value)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.u1(0x03); // iconst_0
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "call",
+                                "(Ljava/lang/String;I)V"));
+                    }
+                    case mjvm.ir.Ir.CLOSE -> {
+                        // CLOSE: rt.closeDev(name)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "closeDev",
+                                "(Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.END_WRITE -> {
+                        // END_WRITE: rt.endWrite()
+                        c.aload0(); c.getfield(rtField);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "endWrite", "()V"));
+                    }
+                    case mjvm.ir.Ir.GETB -> {
+                        // GETB: batch get (pushes empty placeholder)
+                        c.aload(2); c.iload(3);
+                        c.u1(0x01); // aconst_null
+                        c.aastore();
+                        c.iinc(3, 1);
+                    }
+                    case mjvm.ir.Ir.JOB -> {
+                        // JOB: rt.job(cmd)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "job",
+                                "(Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.LOCK -> {
+                        // LOCK: rt.lock(key, mode)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.bipush(op.iarg);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "lock",
+                                "(Ljava/lang/String;I)V"));
+                    }
+                    case mjvm.ir.Ir.MERGE -> {
+                        // MERGE: rt.mergeVar(dst, src)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.ldc(cp.str(op.ival == null ? "" : op.ival));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "mergeVar",
+                                "(Ljava/lang/String;Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.OPEN -> {
+                        // OPEN: rt.openDev(name, args)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.ldc(cp.str(op.ival == null ? "" : op.ival));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "openDev",
+                                "(Ljava/lang/String;Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.READ -> {
+                        // READ: s[p++] = rt.readDev(name)
+                        c.aload(2); c.iload(3);
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "readDev",
+                                "(Ljava/lang/String;)Ljvmumps/MValue;"));
+                        c.aastore();
+                        c.iinc(3, 1);
+                    }
+                    case mjvm.ir.Ir.RET_TO -> {
+                        // RET_TO: return to specific PC (no-op in bytecode)
+                        c.vreturn();
+                    }
+                    case mjvm.ir.Ir.RET_VALUE -> {
+                        // RET_VALUE: return with value on stack
+                        c.vreturn();
+                    }
+                    case mjvm.ir.Ir.SET_EXTRACT -> {
+                        // SET_EXTRACT: s[p-1] = extract(s[p-1], start, end)
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub();
+                        c.invokevirtual(asNum);
+                        c.dstore(4);
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub();
+                        c.dload(4);
+                        c.invokestatic(ofNum);
+                        c.aastore();
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.SET_PIECE -> {
+                        // SET_PIECE: s[p-1] = piece(s[p-1], del, pos)
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub();
+                        c.invokevirtual(asNum);
+                        c.dstore(4);
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub();
+                        c.dload(4);
+                        c.invokestatic(ofNum);
+                        c.aastore();
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.TCOMMIT -> {
+                        // TCOMMIT: rt.tcommit()
+                        c.aload0(); c.getfield(rtField);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "tcommit", "()V"));
+                    }
+                    case mjvm.ir.Ir.TROLLBACK -> {
+                        // TROLLBACK: rt.trollback()
+                        c.aload0(); c.getfield(rtField);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "trollback", "()V"));
+                    }
+                    case mjvm.ir.Ir.TSTART -> {
+                        // TSTART: rt.tstart()
+                        c.aload0(); c.getfield(rtField);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "tstart", "()V"));
+                    }
+                    case mjvm.ir.Ir.USE -> {
+                        // USE: rt.useDev(name)
+                        c.aload0(); c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "useDev",
+                                "(Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.WRITE_CHAR -> {
+                        // WRITE_CHAR: rt.writeChar(s[--p].asNum())
+                        c.aload0(); c.getfield(rtField);
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokevirtual(asNum);
+                        c.u1(0x8e); // d2i
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "writeChar", "(I)V"));
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.WRITE_COL -> {
+                        // WRITE_COL: rt.writeCol(s[--p].asNum())
+                        c.aload0(); c.getfield(rtField);
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokevirtual(asNum);
+                        c.u1(0x8e); // d2i
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "writeCol", "(I)V"));
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.XECUTE -> {
+                        // XECUTE: rt.xecute(s[--p].asStr())
+                        c.aload0(); c.getfield(rtField);
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokevirtual(asStr);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "xecute",
+                                "(Ljava/lang/String;)V"));
+                        c.iinc(3, -1);
                     }
                     case mjvm.ir.Ir.RET -> {
                         c.vreturn();
