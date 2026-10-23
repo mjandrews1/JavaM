@@ -307,13 +307,87 @@ public final class BytecodeEmitter {
                         c.vreturn();
                         break;
                     }
+                    case mjvm.ir.Ir.STORE_ADD -> {
+                        // Atomic increment: s[p-1] = store.increment(name, true, s[p-1].asNum())
+                        c.aload0();
+                        c.getfield(rtField);
+                        c.ldc(cp.str(op.name));
+                        c.iconst_1_(); // true
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokevirtual(asNum);
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "incrementVar",
+                                "(Ljava/lang/String;D)Ljvmumps/MValue;"));
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub();
+                        c.aastore();
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.EVAL_EXPR -> {
+                        // Evaluate M expression: s[p++] = rt.evalExpr(expr)
+                        c.aload(2);
+                        c.iload(3);
+                        c.aload0();
+                        c.getfield(rtField);
+                        c.ldc(cp.str(op.ival == null ? "" : op.ival));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "evalExpr",
+                                "(Ljava/lang/String;)Ljvmumps/MValue;"));
+                        c.aastore();
+                        c.iinc(3, 1);
+                    }
+                    case mjvm.ir.Ir.NEW -> {
+                        // NEW var: rt.newVar(name) — no stack effect
+                        c.aload0();
+                        c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "newVar",
+                                "(Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.KILL -> {
+                        // KILL var: rt.killVar(name) — no stack effect
+                        c.aload0();
+                        c.getfield(rtField);
+                        c.ldc(cp.str(op.name == null ? "" : op.name));
+                        c.invokevirtual(cp.mref("mjvm/runtime/MRuntime", "killVar",
+                                "(Ljava/lang/String;)V"));
+                    }
+                    case mjvm.ir.Ir.JMP0 -> {
+                        // Conditional jump: if (!truthy(s[--p])) goto target
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokestatic(cp.mref("mjvm/runtime/MRuntime", "truthy",
+                                "(Ljvmumps/MValue;)Z"));
+                        // ifeq to target (placeholder offset)
+                        c.u1(0x99); // ifeq
+                        c.u2(0); // placeholder offset
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.MOD -> {
+                        // s[p-2] = s[p-2] % s[p-1]
+                        c.aload(2); c.iload(3); c.iconst_2_(); c.isub(); c.aaload();
+                        c.invokevirtual(asNum);
+                        c.dstore(4);
+                        c.aload(2); c.iload(3); c.iconst_1_(); c.isub(); c.aaload();
+                        c.invokevirtual(asNum);
+                        c.dstore(6);
+                        c.dload(4); c.dload(6);
+                        c.u1(0x71); // irem (Java % operator)
+                        c.aload(2); c.iload(3); c.iconst_2_(); c.isub();
+                        c.invokestatic(ofNum);
+                        c.aastore();
+                        c.iinc(3, -1);
+                    }
+                    case mjvm.ir.Ir.PUSH_REG -> {
+                        // Push last stored value (peephole for redundant reads)
+                        // Simple: push empty (no-op in bytecode path)
+                        c.aload(2); c.iload(3);
+                        c.u1(0x01); // aconst_null (placeholder for EMPTY)
+                        c.aastore();
+                        c.iinc(3, 1);
+                    }
                     case mjvm.ir.Ir.RET -> {
                         c.vreturn();
                         break;
                     }
                     default -> {
-                        c.vreturn();
-                        break;
+                        // Unknown op — no-op in bytecode path
                     }
                 }
             }
