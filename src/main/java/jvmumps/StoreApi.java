@@ -22,6 +22,11 @@ import java.util.List;
  * <p>{@code path} is subscript chain; {@code global} selects {@code ^NAME} vs local.
  * Values are {@link MValue}; numeric strings are stored as text.
  */
+/**
+ * <b>FROZEN</b> — JavaM is frozen as the semantic reference oracle (#199).
+ * mJVM is the production engine. New features go to mJVM.
+ * Bug fixes only for JavaM.
+ */
 public interface StoreApi extends StoreCore, StoreOrder, StoreLock, StoreTx {
 
     // StoreCore: get, set, kill, increment, storeOps

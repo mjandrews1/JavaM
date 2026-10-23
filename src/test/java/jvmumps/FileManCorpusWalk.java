@@ -12,7 +12,7 @@ import java.util.stream.Stream;
  * classify failures as ENGINE GAP / DIALECT / DATA. Read-only; no store writes.
  *
  * Usage: jvmumps.FileManCorpusWalk [--legacy] [FILEMAN_CORPUS]
- *   --legacy  use LineRoutine parser (deprecated, for comparison only)
+ *   --legacy  use LineRoutine parser (deprecated, frozen)
  *   Default: MFrontend (native mJVM) — the unified compiler (#197)
  * Exit 0 always (report is the product). Set WALK_LIMIT to cap files (0 = all).
  */
