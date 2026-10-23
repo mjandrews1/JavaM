@@ -30,7 +30,6 @@ public final class WriteAheadLog implements Closeable {
     public static final byte OP_KILL = 2;
 
     private final Path walPath;
-    private final FileChannel channel;
     private long nextSeq = 1;
     private final Object lock = new Object();
     private long lastFsync = System.currentTimeMillis();
@@ -38,6 +37,9 @@ public final class WriteAheadLog implements Closeable {
     /** Write buffer — batch appends, flush to channel periodically. */
     private final ByteArrayOutputStream writeBuffer = new ByteArrayOutputStream();
     private static final int BUFFER_FLUSH_SIZE = 8192; // 8KB
+
+    private final FileChannel channel;
+    private final java.nio.channels.FileLock fileLock;
 
     public WriteAheadLog(String path, long fsyncIntervalMs) throws IOException {
         this.walPath = Path.of(path);
@@ -49,6 +51,12 @@ public final class WriteAheadLog implements Closeable {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE,
                 StandardOpenOption.APPEND);
+        // Acquire exclusive flock — prevents multi-process corruption
+        try {
+            this.fileLock = channel.lock();
+        } catch (java.nio.channels.OverlappingFileLockException e) {
+            throw new IOException("WAL file is locked by another process: " + path);
+        }
         // Scan existing entries to find next sequence number
         this.nextSeq = scanNextSeq() + 1;
     }
@@ -210,6 +218,7 @@ public final class WriteAheadLog implements Closeable {
     @Override
     public void close() throws IOException {
         fsync();
+        if (fileLock != null && fileLock.isValid()) fileLock.release();
         channel.close();
     }
 
