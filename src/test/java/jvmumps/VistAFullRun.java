@@ -14,7 +14,7 @@ import java.util.stream.Stream;
  * VistA full-run harness (jvmumps#34) — parse every routine under the FOIA
  * VistA corpus, classify failures, report per-package metrics.
  *
- * Usage: jvmumps.VistAFullRun [--native] [VISTA_CORPUS]
+ * Usage: jvmumps.VistAFullRun [--legacy] [VISTA_CORPUS]
  *   --native  run through MFrontend (native mJVM) instead of LineRoutine
  * Env:
  *   VISTA_CORPUS  root dir (default ~/vista-foia/VistA-M-master)
